@@ -284,4 +284,187 @@ function M.preferredHeight(width, cfg, span)
     return M.layout(width, nil, cfg, span).content_h
 end
 
+-- A paintable the FrameContainer frees with its text widgets.
+local function managed(dimen, resources, paint)
+    return {
+        dimen = dimen,
+        getSize = function(self) return self.dimen end,
+        handleEvent = function() return false end,
+        paintTo = paint,
+        free = function()
+            for _i, w in ipairs(resources) do if w.free then w:free() end end
+        end,
+    }
+end
+
+function M.build(ctx, cfg, activity)
+    cfg = type(cfg) == "table" and cfg or {}
+    local shading = cfg.shading == "absolute" and "absolute" or "relative"
+    local start = tonumber(cfg.week_start) or 2
+    local range = cfg.range or "year"
+    local days = activity and activity.days or {}
+    local baseline = tonumber(activity and activity.avg_28) or 0
+    local now = cfg.now or os.date("*t")
+    local today_col = M.weekdayCol(now.wday, start)
+    local shares = M.weekdayShares(days, today_col)
+    local span = M.spanFor(range, now, start) or M.spanFor("year", now, start)
+    local today_noon = os.time{ year = now.year, month = now.month, day = now.day, hour = 12 }
+    local today_offset = math.floor((today_noon - span.start_ts) / 86400 + 0.5)
+
+    -- Shade of each day of the window, -1 for days still to come.
+    local levels = {}
+    local n = #days
+    for k = 0, span.days - 1 do
+        local back = today_offset - k
+        if back < 0 then
+            levels[k] = -1
+        else
+            local entry = days[n - back]
+            levels[k] = M.classify(entry and entry.minutes or 0, baseline, shading)
+        end
+    end
+
+    local width, height = ctx.width, ctx.height
+    local m = M.layout(width, height, cfg, span)
+
+    local resources = {}
+    local function text(str, face)
+        local w = TextWidget:new{ text = str, face = face, fgcolor = TEXT_MUTED }
+        resources[#resources + 1] = w
+        local size = w:getSize()
+        return { widget = w, w = size.w or 0, h = size.h or 0 }
+    end
+    local row_labels, day_labels = {}, {}
+    for col = 0, 6 do
+        local letter = WEEKDAY_LETTERS[((start - 1 + col) % 7) + 1]
+        row_labels[col] = text(letter, m.month_face)
+        day_labels[col] = text(letter, m.letter_face)
+    end
+    local month_labels
+    if range ~= "month" and m.labels then
+        month_labels = {}
+        for _i, month in ipairs(span.months) do
+            local lbl = text(month.label, m.month_face)
+            lbl.col = math.floor((span.first_col + month.day - 1) / 7)
+            month_labels[#month_labels + 1] = lbl
+        end
+    end
+
+    -- A graph on its own is centred in the row.
+    local top = math.max(0, math.floor((height - m.content_h) / 2))
+    local shift = { value = 0 }
+    local cell_w = m.cell_w or m.cell
+    local function col_x(col)
+        if m.col_span and span.weeks > 1 then
+            return math.floor(col * m.col_span / (span.weeks - 1))
+        end
+        return col * (cell_w + m.gap)
+    end
+
+    -- One square per day, future days outlined. Today keeps its shade inset
+    -- under a dotted outline once the cells have room for it; smaller cells
+    -- keep the whole shade under a solid border that takes the gap.
+    local function paint_days(bb, gx, gy, weeks_down)
+        local step = m.cell + m.gap
+        local dotted = m.cell >= S(12)
+        for k = 0, span.days - 1 do
+            local slot = span.first_col + k
+            local week, day = math.floor(slot / 7), slot % 7
+            local x, y, w = gx + col_x(week), gy + day * step, cell_w
+            if weeks_down then x, y, w = gx + day * step, gy + week * step, m.cell end
+            local level = levels[k]
+            if level < 0 then
+                bb:paintBorder(x, y, w, m.cell, 1, FILL_EDGE, 0)
+            elseif k == today_offset then
+                if dotted then
+                    if level > 0 then
+                        local inset = S(2)
+                        bb:paintRect(x + inset, y + inset, w - 2 * inset, m.cell - 2 * inset, FILLS[level])
+                    end
+                    paint_dotted_border(bb, x, y, w, m.cell, S(1), Blitbuffer.COLOR_BLACK)
+                else
+                    paint_cell(bb, x, y, w, m.cell, level)
+                    local t = math.max(1, math.floor(m.gap / 2))
+                    bb:paintBorder(x - t, y - t, w + 2 * t, m.cell + 2 * t, t, Blitbuffer.COLOR_BLACK, 0)
+                end
+            else
+                paint_cell(bb, x, y, w, m.cell, level)
+            end
+        end
+    end
+
+    -- Letters down the rows, the typical week's track filled from the left,
+    -- and a hairline before the graph.
+    local function paint_left(bb, ox, gy)
+        local step = m.cell + m.gap
+        local tx = ox + m.letter_w + S(5)
+        for col = 0, 6 do
+            local y = gy + col * step
+            local lbl = row_labels[col]
+            lbl.widget:paintTo(bb, ox + m.letter_w - lbl.w, y + math.floor((m.cell - lbl.h) / 2))
+            if m.typical then
+                bb:paintBorder(tx, y, m.track_w, m.cell, 1, FILL_EDGE, 0)
+                local fill = math.floor(m.track_w * shares[col] + 0.5)
+                if fill > 0 then bb:paintRect(tx, y, fill, m.cell, FILL_MID) end
+            end
+        end
+        if m.typical then
+            bb:paintRect(ox + m.left_w - S(7), gy, S(1), 7 * step - m.gap, FILL_LIGHT)
+        end
+    end
+
+    -- Month header: letters centred on each column and, with the typical
+    -- week on, an upright track under each, filled from the bottom.
+    local function paint_header(bb, ox, y)
+        local step = m.cell + m.gap
+        for col = 0, 6 do
+            local x = ox + col * step
+            local lbl = day_labels[col]
+            lbl.widget:paintTo(bb, x + math.floor((m.cell - lbl.w) / 2), y)
+            if m.typical then
+                local ty = y + m.label_h + S(3)
+                bb:paintBorder(x, ty, m.cell, m.track_h, 1, FILL_EDGE, 0)
+                local fill = math.floor(m.track_h * shares[col] + 0.5)
+                if fill > 0 then bb:paintRect(x, ty + m.track_h - fill, m.cell, fill, FILL_MID) end
+            end
+        end
+    end
+
+    local function paint_graph(bb, gx, gy)
+        paint_days(bb, gx, gy, false)
+        if not month_labels then return end
+        local ly = gy + m.grid_h + S(3)
+        local last_right = -math.huge
+        for _i, lbl in ipairs(month_labels) do
+            local x = gx + col_x(lbl.col)
+            if x >= last_right + S(6) and x + lbl.w <= gx + m.grid_w then
+                lbl.widget:paintTo(bb, x, ly)
+                last_right = x + lbl.w
+            end
+        end
+    end
+
+    local content = managed(Geom:new{ w = width, h = height }, resources, function(_self, bb, x, y)
+        local ox = x + m.pad_x + m.block_x
+        local oy = y + top + m.pad_y + shift.value
+        if m.range == "month" then
+            paint_header(bb, ox, oy)
+            paint_days(bb, ox, oy + m.header_h + S(3), true)
+        else
+            paint_left(bb, ox, oy)
+            paint_graph(bb, ox + m.left_w, oy)
+        end
+    end)
+
+    if type(ctx.setContentBounds) == "function" then
+        ctx.setContentBounds{
+            top = top, bottom = top + m.content_h,
+            min_shift = -top, max_shift = math.max(0, height - (top + m.content_h)),
+            set_shift = function(v) shift.value = v end,
+        }
+    end
+
+    return FrameContainer:new{ width = width, height = height, padding = 0, bordersize = 0, content }
+end
+
 return M

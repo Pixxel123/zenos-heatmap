@@ -104,3 +104,54 @@ describe("heatmap layout", function()
         assert.equals(m.content_h, Heatmap.preferredHeight(1000, cfg{}, YEAR))
     end)
 end)
+
+describe("heatmap paint", function()
+    local Heatmap = require("heatmap")
+    local NOW = { year = 2026, month = 9, day = 14, wday = 2 }   -- a Monday
+    local function activity(n, minutes)
+        local out = { days = {}, avg_28 = 30, max = 60 }
+        for i = 1, n do out.days[i] = { date = "2026-01-01", minutes = minutes(i) } end
+        return out
+    end
+    local function paint(cfg, act, height)
+        cfg.week_start = 2; cfg.now = NOW
+        local frame = Heatmap.build({ width = 1000, height = height or 300 }, cfg, act)
+        local bb = H.bb()
+        frame[1].paintTo(frame[1], bb, 0, 0)
+        return bb, frame
+    end
+    it("fills each track by the weekday's share and outlines the rest", function()
+        local bb = paint({ range = "year", typical_week = true }, activity(371, function(i) return (i % 7 == 0) and 60 or 30 end))
+        local borders, rects = H.only(bb, "border"), H.only(bb, "rect")
+        assert.is_true(#borders >= 7)
+        local fills = {}
+        for _i, r in ipairs(rects) do if r[6] == "gray_5" and r[4] > 0 then fills[#fills + 1] = r end end
+        assert.is_true(#fills >= 7)
+    end)
+    it("paints no track and no hairline with the typical week off", function()
+        local bb = paint({ range = "year", typical_week = false }, activity(371, function() return 0 end))
+        for _i, r in ipairs(H.only(bb, "rect")) do assert.is_true(r[6] ~= "gray") end
+        for _i, b in ipairs(H.only(bb, "border")) do assert.is_true(b[4] ~= 36) end
+    end)
+    it("marks today once, solid on small cells and dotted on large ones", function()
+        local bb = paint({ range = "year", typical_week = true }, activity(371, function() return 10 end), 70)
+        local black_borders = 0
+        for _i, b in ipairs(H.only(bb, "border")) do if b[7] == "black" then black_borders = black_borders + 1 end end
+        assert.equals(1, black_borders)
+        local bb2 = paint({ range = "month", typical_week = true }, activity(371, function() return 10 end))
+        local dotted = 0
+        for _i, r in ipairs(H.only(bb2, "rect")) do if r[6] == "black" and r[4] <= 2 and r[5] <= 2 then dotted = dotted + 1 end end
+        assert.is_true(dotted > 4)
+    end)
+    it("frees its text widgets and reports bounds", function()
+        local bounds
+        local frame = Heatmap.build({ width = 1000, height = 300, setContentBounds = function(b) bounds = b end },
+            { range = "quarter", typical_week = true, week_start = 2, now = NOW }, activity(371, function() return 0 end))
+        assert.is_table(bounds)
+        assert.is_true(bounds.bottom > bounds.top)
+        assert.has_no.errors(function() frame[1].free() end)
+    end)
+    it("always asks for 371 days of history", function()
+        assert.equals(371, Heatmap.SERIES_DAYS)
+    end)
+end)
