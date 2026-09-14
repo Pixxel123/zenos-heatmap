@@ -89,7 +89,13 @@ function ZenHeatmap:register()
         cfg.week_start = week_start()
         local activity = DayActivity.query(DayActivity.SERIES_DAYS)
         return Heatmap.build(ctx, cfg, activity, home_stats(cfg))
-    end, { label = _("Reading heatmap"), size = ZenHeatmap.sizeFor(self.cfg) }) and true or false
+    end, {
+        label = _("Reading heatmap"),
+        size = ZenHeatmap.sizeFor(self.cfg),
+        -- ZenOS versions with a settings hook for external items open these
+        -- from the Widgets list and Home's edit mode; older ones ignore it.
+        settings = function() return plugin:menuItems() end,
+    }) and true or false
 end
 
 function ZenHeatmap:onZenOSReady()
