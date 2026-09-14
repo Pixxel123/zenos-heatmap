@@ -158,6 +158,15 @@ describe("heatmap paint", function()
         for _i, r in ipairs(rects) do if r[6] == "gray_5" and r[4] > 0 then fills[#fills + 1] = r end end
         assert.is_true(#fills >= 7)
     end)
+    it("shades each track by what its weekday's average earns in the grid", function()
+        -- Weekdays average 30 against a 30 baseline (normal), weekends 60 (heavy).
+        local bb = paint({ range = "year", typical_week = true }, activity(371, function(i) return (i % 7 == 0 or i % 7 == 6) and 60 or 30 end))
+        local track_x = 6 + 6 + 5
+        local shades = {}
+        for _i, r in ipairs(H.only(bb, "rect")) do if r[2] == track_x and r[5] == 14 then shades[r[6]] = (shades[r[6]] or 0) + 1 end end
+        assert.equals(5, shades.gray_5)
+        assert.equals(2, shades.black)
+    end)
     it("paints no track and no hairline with the typical week off", function()
         local bb = paint({ range = "year", typical_week = false }, activity(371, function() return 0 end))
         for _i, r in ipairs(H.only(bb, "rect")) do assert.is_true(r[6] ~= "gray") end

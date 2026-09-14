@@ -437,7 +437,13 @@ function M.build(ctx, cfg, activity, stats)
     local baseline = tonumber(activity and activity.avg_28) or 0
     local now = cfg.now or os.date("*t")
     local today_col = M.weekdayCol(now.wday, start)
-    local shares = M.weekdayShares(days, today_col)
+    local shares, weekday_minutes = M.weekdayShares(days, today_col)
+    -- Each track's fill takes the shade its weekday's average earns in the
+    -- grid, so a heavy Saturday reads as heavy beside the graph too.
+    local track_fill = {}
+    for col = 0, 6 do
+        track_fill[col] = FILLS[math.max(1, M.classify(weekday_minutes[col], baseline, shading))]
+    end
     local span = M.spanFor(range, now, start) or M.spanFor("year", now, start)
     local today_noon = os.time{ year = now.year, month = now.month, day = now.day, hour = 12 }
     local today_offset = math.floor((today_noon - span.start_ts) / 86400 + 0.5)
@@ -568,7 +574,8 @@ function M.build(ctx, cfg, activity, stats)
     end
 
     -- Letters down the rows in a face sized to fit them, the typical week's
-    -- track filled from the left, and a hairline before the graph.
+    -- track filled from the left in the weekday's shade, and a hairline
+    -- before the graph.
     local function paint_left(bb, ox, gy)
         local step = m.cell + m.gap
         local tx = ox + m.letter_w + S(5)
@@ -579,7 +586,7 @@ function M.build(ctx, cfg, activity, stats)
             if m.typical then
                 bb:paintBorder(tx, y, m.track_w, m.cell, 1, FILL_EDGE, 0)
                 local fill = math.floor(m.track_w * shares[col] + 0.5)
-                if fill > 0 then bb:paintRect(tx, y, fill, m.cell, FILL_MID) end
+                if fill > 0 then bb:paintRect(tx, y, fill, m.cell, track_fill[col]) end
             end
         end
         if m.typical then
@@ -599,7 +606,7 @@ function M.build(ctx, cfg, activity, stats)
                 local ty = y + m.label_h + S(3)
                 bb:paintBorder(x, ty, m.cell, m.track_h, 1, FILL_EDGE, 0)
                 local fill = math.floor(m.track_h * shares[col] + 0.5)
-                if fill > 0 then bb:paintRect(x, ty + m.track_h - fill, m.cell, fill, FILL_MID) end
+                if fill > 0 then bb:paintRect(x, ty + m.track_h - fill, m.cell, fill, track_fill[col]) end
             end
         end
     end

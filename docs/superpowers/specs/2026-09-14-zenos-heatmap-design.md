@@ -28,8 +28,8 @@ Decided from a design critique and a side-by-side mock on 14 September:
   caption face. They are always shown.
 - **Typical week**: each weekday's mean minutes over the last 12 weeks, as a
   share of the best weekday (0 to 1). Beside the row graphs it is an outlined
-  track three cells wide (capped at S(36)) filled from the left in
-  `COLOR_GRAY_5`, one per row, with a 1 px `COLOR_GRAY` hairline between the
+  track three cells wide (capped at S(36)) filled from the left, one per row,
+  in the shade the weekday's average earns in the grid (light, normal, heavy), with a 1 px `COLOR_GRAY` hairline between the
   block and the graph. Under the Month header it is the same track standing
   upright (cell wide, 1.5 cells tall) filled from the bottom. Outline means
   "the rest, up to your best weekday", fill means "usual": the grid's own
