@@ -57,7 +57,8 @@ as a plugin menu for Launcher and Controls buttons):
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| Height | Small (2 units), Medium (3), Large (4) | Medium |
+| Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None | Time today, Day streak |
+| Height | Automatic, Small (2 units), Medium (3), Large (4) | Automatic (2 for year, 3 otherwise) |
 
 Changing a setting saves and re-registers the item, which makes ZenOS rebuild
 Home. Enabling and positioning the widget is done in ZenOS under
@@ -90,9 +91,22 @@ default.
 - Only ZenOS registers the hook; without ZenOS the plugin loads, does nothing
   and shows its menu with a note.
 
+## Stats beside the graph (added later on 14 September)
+
+The year graph is width-bound and takes the whole row. In the 3-month and
+Month ranges the graph would float in the row, so two stat slots sit beside
+it, as ZenOS's own quarter layout once had: the graph in the left cell, one
+stat centred between it and a second stat flush right, dividing lines midway
+with the same clearance rule as ZenOS's stats row, the type stepping down from
+18 to 8 until the row fits. The numbers come from ZenOS's `common/db_stats`
+`queryHomeStats` (guarded; without it the graph stands alone), so they equal
+the Reading stats widget's. The row letters take a face sized from the row
+pitch (a capital is about three quarters of the font's pixel size), capped at
+the month labels' size, so all seven always show.
+
 ## Non-goals
 
-- No stats row inside the widget, no stat slots, no dividers.
+- No stat slots on the year graph; the year row is the graph alone.
 - No per-preset settings, no ZenOS settings integration beyond the hook.
 - No translations catalog in version 1 (strings are wrapped in `_()` for
   KOReader's own gettext).
