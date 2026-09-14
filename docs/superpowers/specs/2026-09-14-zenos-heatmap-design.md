@@ -112,8 +112,11 @@ The year graph is width-bound, so its stats do not sit beside it. Instead
 the three fields ZenOS shows in its Reading stats widget (read from the Home
 layout's `middle_stats_triplet`, defaults pages today, time today, day
 streak) form a row above the graph: equal cells, value over caption, centred,
-dividers between, the same type stepping from 18 down to 8 until the graph
-under it is complete. One Home row cannot hold both, so automatic height asks
+dividers between, the type stepping down to 8 until the graph under it is
+complete. The starting size is ZenOS's own Reading stats setting
+(`modules.stats_triplet`: `font_size` when `automatic_font_size` is false,
+else `max_font_size`; 16 and 18 by default), for every range, so lowering
+that setting scales the stats here as well. One Home row cannot hold both, so automatic height asks
 for two rows when this is on (the "ZenOS stats above the year graph" toggle,
 default on) and one when it is off. If the row never fits, the graph stands
 alone. Asked for so the widget can replace the Reading stats row and the

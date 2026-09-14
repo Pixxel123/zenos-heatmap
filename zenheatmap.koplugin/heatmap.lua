@@ -65,7 +65,7 @@ M.FIELDS = {
 -- Same floors as ZenOS's Reading stats widget, so a short row shrinks type
 -- the same way.
 local MIN_VALUE_SIZE = 8
-local MAX_VALUE_SIZE = 28
+local MAX_VALUE_SIZE = 64
 local function value_size_for(cfg)
     return math.max(MIN_VALUE_SIZE, math.min(MAX_VALUE_SIZE, tonumber(cfg.font_size) or 18))
 end

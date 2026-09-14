@@ -46,7 +46,9 @@ filled towards your best weekday and shaded like the cells. The week starts on
 the day set in KOReader's statistics plugin. Month labels stay whenever they
 are on, shrinking with the cells in a short row. The stats are ZenOS's own
 numbers: over the year graph the widget shows the same three as ZenOS's
-Reading stats widget, so it can stand in for that row.
+Reading stats widget, so it can stand in for that row. They follow that
+widget's font size setting too (its fixed size, or its maximum when it sizes
+itself), and shrink further only when the graph needs the room.
 
 ## Compatibility
 

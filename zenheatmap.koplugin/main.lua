@@ -40,16 +40,33 @@ function ZenHeatmap.sizeFor(cfg)
     return (cfg.range == "year" and cfg.year_stats == false) and "xs" or "s"
 end
 
+-- ZenOS's Home layout, when its store can be read.
+local function zen_home_layout()
+    local ok, PresetStore = pcall(require, "config/preset_store")
+    if not (ok and type(PresetStore) == "table" and type(PresetStore.getSettings) == "function") then return nil end
+    local ok2, dcfg = pcall(PresetStore.getSettings, "home")
+    return ok2 and type(dcfg) == "table" and dcfg or nil
+end
+
+-- The type size of ZenOS's Reading stats widget: its fixed size, or its
+-- maximum when it sizes itself; the stats here start from the same size
+-- and step down only when the graph needs the room. ZenOS's defaults
+-- (16 fixed, 18 automatic) when nothing is set.
+function ZenHeatmap.zenStatFont()
+    local dcfg = zen_home_layout()
+    local mcfg = dcfg and type(dcfg.modules) == "table" and dcfg.modules.stats_triplet
+    mcfg = type(mcfg) == "table" and mcfg or {}
+    local size = mcfg.automatic_font_size ~= false and (tonumber(mcfg.max_font_size) or 18)
+        or (tonumber(mcfg.font_size) or 16)
+    return math.max(8, math.min(64, size))
+end
+
 -- The three fields ZenOS shows in its Reading stats widget, from its Home
 -- layout; its defaults when that cannot be read.
 local ZEN_TRIPLET = { "today_pages", "today_duration", "streak" }
 function ZenHeatmap.zenStatFields()
-    local ok, PresetStore = pcall(require, "config/preset_store")
-    local triplet
-    if ok and type(PresetStore) == "table" and type(PresetStore.getSettings) == "function" then
-        local ok2, dcfg = pcall(PresetStore.getSettings, "home")
-        triplet = ok2 and type(dcfg) == "table" and dcfg.middle_stats_triplet or nil
-    end
+    local dcfg = zen_home_layout()
+    local triplet = dcfg and dcfg.middle_stats_triplet
     local out = {}
     for _i, id in ipairs(type(triplet) == "table" and triplet or {}) do
         if Heatmap.FIELDS[id] then out[#out + 1] = id end
@@ -187,6 +204,7 @@ function ZenHeatmap:register()
     return register(ZenHeatmap.ITEM_ID, function(ctx)
         local cfg = ZenHeatmap.normalize(plugin.cfg)
         cfg.week_start = week_start()
+        cfg.font_size = ZenHeatmap.zenStatFont()
         if cfg.range == "year" and cfg.year_stats then cfg.stat_fields = ZenHeatmap.zenStatFields() end
         local activity = DayActivity.query(DayActivity.SERIES_DAYS)
         return Heatmap.build(ctx, cfg, activity, home_stats(cfg))

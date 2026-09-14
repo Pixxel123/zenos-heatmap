@@ -110,6 +110,15 @@ describe("plugin entry", function()
         assert.equals("xs", ZenHeatmap.sizeFor({ range = "year", size = "auto", year_stats = false }))
         assert.is_true(ZenHeatmap.normalize(nil).year_stats)
         assert.same({ "today_pages", "today_duration", "streak" }, ZenHeatmap.zenStatFields())
+        assert.equals(18, ZenHeatmap.zenStatFont())
+        zen_home({ featured = true }, false)
+        store.settings.modules.stats_triplet = { automatic_font_size = false, font_size = 12 }
+        assert.equals(12, ZenHeatmap.zenStatFont())
+        store.settings.modules.stats_triplet = { automatic_font_size = true, max_font_size = 14 }
+        assert.equals(14, ZenHeatmap.zenStatFont())
+        store.settings.middle_stats_triplet = { "week_pages", "bogus", "streak" }
+        assert.same({ "week_pages", "streak" }, ZenHeatmap.zenStatFields())
+        no_zen_home()
         assert.equals("s", ZenHeatmap.sizeFor({ range = "quarter", size = "auto" }))
         assert.equals("s", ZenHeatmap.sizeFor({ range = "month", size = "auto" }))
         assert.equals("xs", ZenHeatmap.normalize({ size = "xs" }).size)
