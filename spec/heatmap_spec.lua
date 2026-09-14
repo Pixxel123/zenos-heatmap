@@ -105,6 +105,30 @@ describe("heatmap layout", function()
         assert.equals(9, Heatmap.layout(1000, 70, cfg{}, YEAR).row_face.size)
         assert.equals(13, Heatmap.layout(1000, nil, cfg{ range = "quarter" }, Q).row_face.size)
     end)
+    it("puts two stats beside the quarter graph and sizes the type to fit", function()
+        local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false,
+            right_value = "34", right_label = "day streak", right_icon = true }
+        local m = Heatmap.fitLayout(1000, nil, cfg{ range = "quarter" }, Q, texts)
+        assert.is_true(m.stats)
+        assert.equals(18, m.value_size)
+        assert.equals(988 - m.right_w, m.cell3_x)
+        assert.is_true(m.grid_w < 988 / 2)
+        assert.is_true(m.sep1_x - m.cell1_w >= 12 and m.mid_x - m.sep1_x >= 12)
+        assert.is_true(m.cell3_x - m.sep2_x >= 12)
+        -- A narrow row cannot keep the lines clear at any size; the fit ends at the floor.
+        local tight = Heatmap.fitLayout(380, nil, cfg{ range = "quarter" }, Q, texts)
+        assert.equals(8, tight.value_size)
+        -- The year graph never takes stats.
+        assert.is_false(Heatmap.fitLayout(1000, nil, cfg{}, YEAR, texts).stats)
+    end)
+    it("keeps the month calendar at the left when stats sit beside it", function()
+        local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false }
+        local m = Heatmap.fitLayout(1000, nil, cfg{ range = "month" }, MONTH, texts)
+        assert.is_true(m.stats)
+        assert.equals(0, m.block_x)
+        assert.equals(m.grid_w, m.cell1_w)
+        assert.equals(0, m.right_w)
+    end)
     it("reports the natural height", function()
         local m = Heatmap.layout(1000, nil, cfg{}, YEAR)
         assert.equals(m.content_h, Heatmap.preferredHeight(1000, cfg{}, YEAR))
@@ -166,6 +190,33 @@ describe("heatmap paint", function()
         assert.equals(7, letters(paint({ range = "year", typical_week = true }, activity(371, function() return 0 end), 70)))
         assert.equals(7, letters(paint({ range = "year", typical_week = true }, activity(371, function() return 0 end))))
         assert.equals(7, letters(paint({ range = "quarter", typical_week = false }, activity(371, function() return 0 end))))
+    end)
+    it("paints the stats beside the quarter graph with dividers and the flame", function()
+        local stats = { today_duration = 49 * 60, streak = 34 }
+        local frame = Heatmap.build({ width = 1000, height = 300 },
+            { range = "quarter", typical_week = true, week_start = 2, now = NOW, stat_left = "today_duration", stat_right = "streak" },
+            activity(371, function() return 10 end), stats)
+        local bb = H.bb(); frame[1].paintTo(frame[1], bb, 0, 0)
+        local texts, dividers, icons = {}, 0, 0
+        for _i, c in ipairs(bb.calls) do
+            if c[1] == "text" then texts[c[4]] = true end
+            if c[1] == "rect" and c[6] == "dark_gray" and c[4] == 2 then dividers = dividers + 1 end
+            if c[1] == "icon" then icons = icons + 1 end
+        end
+        assert.is_true(texts["49m"] and texts["read today"] and texts["34"] and texts["day streak"])
+        assert.equals(2, dividers)
+        assert.equals(1, icons)
+    end)
+    it("formats durations and renders every field", function()
+        assert.equals("0m", Heatmap.fmtTime(0))
+        assert.equals("49m", Heatmap.fmtTime(49 * 60))
+        assert.equals("1h 5m", Heatmap.fmtTime(65 * 60))
+        local s, x = { today_pages = 42, today_duration = 60, streak = 3, week_pages = 7, week_duration = 120 }, { period_days = 8, period_caption = "days in Sep" }
+        for id, f in pairs(Heatmap.FIELDS) do
+            assert.is_string(f.value(s, x)); assert.is_string(f.caption(s, x))
+            assert.equals(id == "streak", f.icon == true)
+        end
+        assert.equals("8", Heatmap.FIELDS.period_days.value(s, x))
     end)
     it("always asks for 371 days of history", function()
         assert.equals(371, Heatmap.SERIES_DAYS)

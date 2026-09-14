@@ -26,6 +26,12 @@ stub("ui/widget/textwidget", { new = function(_, t)
     t.free = function() end
     return t
 end })
+stub("ui/widget/iconwidget", { new = function(_, t)
+    t.getSize = function() return { w = t.width, h = t.height } end
+    t.paintTo = function(self, bb, x, y) bb.calls[#bb.calls + 1] = { "icon", x, y, self.file } end
+    t.free = function() end
+    return t
+end })
 stub("gettext", function(s) return s end)
 
 function H.bb()

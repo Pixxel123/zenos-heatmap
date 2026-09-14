@@ -3,6 +3,7 @@ local Device = require("device")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
+local IconWidget = require("ui/widget/iconwidget")
 local TextWidget = require("ui/widget/textwidget")
 local _ = require("gettext")
 
@@ -26,6 +27,58 @@ M.SERIES_DAYS = SERIES_DAYS
 M.WEEKDAY_LETTERS = WEEKDAY_LETTERS
 
 local function S(v) return Screen:scaleBySize(v) end
+
+local function fmt_time(secs)
+    secs = math.floor(secs or 0)
+    if secs <= 0 then return "0" .. _("m") end
+    local h = math.floor(secs / 3600)
+    local m = math.floor((secs % 3600) / 60)
+    if h > 0 then return h .. _("h") .. " " .. m .. _("m") end
+    return m .. _("m")
+end
+M.fmtTime = fmt_time
+
+-- The flame beside the streak ships with the plugin.
+local flame_icon_path
+do
+    local src = debug.getinfo(1, "S").source or ""
+    if src:sub(1, 1) == "@" then
+        local dir = src:sub(2):match("^(.*)/[^/]+$")
+        local path = dir and (dir .. "/flame.svg")
+        local f = path and io.open(path, "r")
+        if f then f:close(); flame_icon_path = path end
+    end
+end
+
+-- What a stat slot beside the graph can show. `value` and `caption` take
+-- ZenOS's home stats and the `extra` table build() derives from the day
+-- series. `icon` marks the streak, which carries the flame.
+M.FIELDS = {
+    streak = { icon = true, value = function(s) return tostring(s.streak or 0) end, caption = function() return _("day streak") end },
+    period_days = { value = function(_s, x) return tostring(x.period_days or 0) end, caption = function(_s, x) return x.period_caption end },
+    today_pages = { value = function(s) return tostring(s.today_pages or 0) end, caption = function() return _("pages today") end },
+    today_duration = { value = function(s) return fmt_time(s.today_duration or 0) end, caption = function() return _("read today") end },
+    week_pages = { value = function(s) return tostring(s.week_pages or 0) end, caption = function() return _("pages this week") end },
+    week_duration = { value = function(s) return fmt_time(s.week_duration or 0) end, caption = function() return _("this week") end },
+}
+
+-- Same floors as ZenOS's Reading stats widget, so a short row shrinks type
+-- the same way.
+local MIN_VALUE_SIZE = 8
+local MAX_VALUE_SIZE = 28
+local function value_size_for(cfg)
+    return math.max(MIN_VALUE_SIZE, math.min(MAX_VALUE_SIZE, tonumber(cfg.font_size) or 18))
+end
+local function faces(value_size)
+    return Font:getFace("smallinfofont", S(value_size)),
+        Font:getFace("smallinfofont", S(math.max(6, math.floor(value_size * 0.6))))
+end
+-- Height of a value with its caption drawn beneath it, as paint_stat lays them out.
+local function stat_height(value_h, label_h)
+    return value_h - math.floor(value_h * 0.18) + 1 + label_h
+end
+-- Clear space a dividing line keeps on each side of the stats.
+local SEP_CLEAR = 12
 
 -- 0 none, 1 light, 2 normal, 3 big. Relative mode compares against the
 -- reader's own baseline; absolute mode is also the fallback with no history.
@@ -137,15 +190,16 @@ end
 -- Width and height of `str` set in `face`, cached per face.
 local function text_prober()
     local cache = {}
-    return function(str, face)
+    return function(str, face, bold)
         local for_face = cache[face]
         if not for_face then for_face = {}; cache[face] = for_face end
-        local hit = for_face[str]
+        local key = (bold and "b" or "") .. tostring(str)
+        local hit = for_face[key]
         if hit then return hit[1], hit[2] end
-        local w = TextWidget:new{ text = str, face = face }
+        local w = TextWidget:new{ text = str, face = face, bold = bold }
         local size = w:getSize()
         if w.free then w:free() end
-        for_face[str] = { size.w or 0, size.h or 1 }
+        for_face[key] = { size.w or 0, size.h or 1 }
         return size.w or 0, size.h or 1
     end
 end
@@ -216,13 +270,33 @@ end
 
 -- Quarter and month: cells shrink from `cell_max` to `cell_min` until the
 -- block fits `avail_h`; the gaps close as a last resort.
-local function fit_block(m, avail_h, cell_max, cell_min, block_h)
+local function fit_block(m, avail_h, cell_max, cell_min, left_h)
+    local function block_h(cell, gap)
+        return math.max(left_h(cell, gap), m.stats and m.stat_h or 0)
+    end
     local cell, gap = cell_max, S(4)
     while cell > cell_min and block_h(cell, gap) > avail_h do cell = cell - 1 end
     if block_h(cell, gap) > avail_h then gap = S(2) end
     m.cell, m.gap = cell, gap
-    m.content_h = m.pad_y + block_h(cell, gap)
-    m.complete = block_h(cell, gap) <= avail_h
+    m.row_a_h = block_h(cell, gap)
+    m.content_h = m.pad_y + m.row_a_h
+    m.complete = m.row_a_h <= avail_h
+end
+
+-- The two stat cells beside a graph: slot 2 centred between the graph and
+-- slot 3, which sits flush right; dividing lines midway between neighbours.
+-- The row is wide enough once each line keeps SEP_CLEAR from the text.
+local function place_row_a(m, row_w)
+    m.row_w = row_w
+    m.cell3_x = row_w - m.right_w
+    m.cell2_x = m.cell1_w + m.cell_gap
+    m.cell2_w = m.cell3_x - m.cell_gap - m.cell2_x
+    m.mid_x = m.cell2_x + math.floor((m.cell2_w - m.mid_w) / 2)
+    m.sep1_x = math.floor((m.cell1_w + m.mid_x) / 2)
+    m.sep2_x = math.floor((m.mid_x + m.mid_w + m.cell3_x) / 2)
+    if m.mid_w == 0 then m.sep1_x = math.floor((m.cell1_w + m.cell3_x) / 2) end
+    local min_slack = 2 * math.max(0, 2 * S(SEP_CLEAR) - m.cell_gap)
+    m.fits_w = m.mid_w == 0 or m.cell2_w - m.mid_w >= min_slack
 end
 
 -- Three months: a week-column graph with the letters and track beside it.
@@ -231,7 +305,7 @@ local function layout_quarter(m, cfg, avail_h)
     m.labels = cfg.month_labels ~= false
     local labels_h = m.labels and (S(3) + m.month_label_h) or 0
     m.left_w = left_block_w(m)
-    local room_w = m.inner_w - m.left_w
+    local room_w = (m.stats and m.inner_w * 0.5 or m.inner_w) - m.left_w
     local by_w = math.floor((room_w - (cols - 1) * S(4)) / cols)
     fit_block(m, avail_h, math.max(S(8), math.min(S(32), by_w)), S(8), function(cell, gap)
         return cell * 7 + gap * 6 + labels_h
@@ -242,6 +316,8 @@ local function layout_quarter(m, cfg, avail_h)
     m.track_w = track_width(m, m.cell_w, m.gap)
     m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
+    m.cell1_w = m.left_w + m.grid_w
+    if m.stats then place_row_a(m, m.inner_w) end
 end
 
 -- Month: the weekday letters over the calendar and, with the typical week
@@ -260,14 +336,36 @@ local function layout_month(m, cfg, avail_h)
     m.track_h = track_h(m.cell)
     m.grid_w, m.grid_h = grid_size(m.cell, m.gap, 7, rows)
     m.left_w, m.track_w = 0, 0
-    m.block_x = math.floor((m.inner_w - m.grid_w) / 2)
+    m.cell1_w = m.grid_w
+    if m.stats then
+        m.block_x = 0
+        place_row_a(m, m.inner_w)
+    else
+        m.block_x = math.floor((m.inner_w - m.grid_w) / 2)
+    end
 end
 
--- Geometry for one row. `height` is the row height to fit into (nil for the
--- natural size); `cfg` is normalised settings; `span` from spanFor.
-function M.layout(width, height, cfg, span, probe)
-    probe = probe or text_prober()
+-- Geometry for one row at one type size. `height` is the row height to fit
+-- into (nil for the natural size); `cfg` is normalised settings; `span`
+-- from spanFor; `texts` carries the stat strings when two stats sit beside
+-- the graph (3-month and Month ranges only).
+local function layout(width, height, cfg, span, value_size, texts, probe)
     local m = { range = cfg.range or "year", typical = cfg.typical_week ~= false, span = span }
+    m.stats = m.range ~= "year" and texts ~= nil and (texts.mid_value ~= nil or texts.right_value ~= nil)
+    m.cell_gap = S(14)
+    local value_face, label_face = faces(value_size)
+    m.value_size, m.value_face, m.label_face = value_size, value_face, label_face
+    local value_h = select(2, probe("8", value_face, true))
+    local caption_h = select(2, probe("A", label_face))
+    m.stat_h = stat_height(value_h, caption_h)
+    local icon_w = math.max(8, math.floor(value_h * 0.62)) + S(3)
+    local function stat_w(value, label, icon)
+        if not (texts and value) then return 0 end
+        return math.max((probe(value, value_face, true)) + (icon and icon_w or 0), (probe(label, label_face)))
+    end
+    m.mid_w = m.stats and stat_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
+    m.right_w = m.stats and stat_w(texts.right_value, texts.right_label, texts.right_icon) or 0
+    m.fits_w = true
     m.pad_x = S(6)
     m.pad_y = S(6)
     m.inner_w = math.max(1, width - m.pad_x * 2)
@@ -291,6 +389,28 @@ function M.layout(width, height, cfg, span, probe)
     return m
 end
 
+-- Geometry without stats, at the configured type size.
+function M.layout(width, height, cfg, span, probe)
+    return layout(width, height, cfg, span, value_size_for(cfg), nil, probe or text_prober())
+end
+
+-- With stats beside the graph, the largest type whose row fits; without
+-- them the one layout there is.
+function M.fitLayout(width, height, cfg, span, texts, probe)
+    probe = probe or text_prober()
+    local best, last
+    for size = value_size_for(cfg), MIN_VALUE_SIZE, -1 do
+        local m = layout(width, height, cfg, span, size, texts, probe)
+        last = m
+        if not m.stats then return m end
+        if m.fits_h and m.fits_w then
+            if m.complete then return m end
+            if not best or (m.cell or 0) > (best.cell or 0) then best = m end
+        end
+    end
+    return best or last
+end
+
 function M.preferredHeight(width, cfg, span)
     return M.layout(width, nil, cfg, span).content_h
 end
@@ -308,7 +428,7 @@ local function managed(dimen, resources, paint)
     }
 end
 
-function M.build(ctx, cfg, activity)
+function M.build(ctx, cfg, activity, stats)
     cfg = type(cfg) == "table" and cfg or {}
     local shading = cfg.shading == "absolute" and "absolute" or "relative"
     local start = tonumber(cfg.week_start) or 2
@@ -335,16 +455,59 @@ function M.build(ctx, cfg, activity)
         end
     end
 
+    -- The window's days read and its caption, for a "days read" stat.
+    local period_days = 0
+    for _i, d in ipairs(days) do
+        if (d.minutes or 0) > 0 and d.date and d.date >= span.start_date then period_days = period_days + 1 end
+    end
+    local period_caption
+    if range == "quarter" then
+        period_caption = string.format(_("days since %s"), "1 " .. os.date("%b", span.start_ts))
+    elseif range == "month" then
+        period_caption = string.format(_("days in %s"), os.date("%b", span.start_ts))
+    else
+        period_caption = string.format(_("days in %s"), tostring(now.year))
+    end
+    local extra = { period_days = period_days, period_caption = period_caption }
+    local texts
+    if range ~= "year" and type(stats) == "table" then
+        texts = {}
+        for role, id in pairs({ mid = cfg.stat_left, right = cfg.stat_right }) do
+            local field = M.FIELDS[id]
+            if field then
+                texts[role .. "_value"] = field.value(stats, extra)
+                texts[role .. "_label"] = field.caption(stats, extra)
+                texts[role .. "_icon"] = flame_icon_path ~= nil and field.icon or false
+            end
+        end
+    end
+
     local width, height = ctx.width, ctx.height
-    local m = M.layout(width, height, cfg, span)
+    local m = M.fitLayout(width, height, cfg, span, texts)
 
     local resources = {}
-    local function text(str, face)
-        local w = TextWidget:new{ text = str, face = face, fgcolor = TEXT_MUTED }
+    local function text(str, face, bold, color)
+        local w = TextWidget:new{ text = str, face = face, bold = bold, fgcolor = color or TEXT_MUTED }
         resources[#resources + 1] = w
         local size = w:getSize()
         return { widget = w, w = size.w or 0, h = size.h or 0 }
     end
+    -- A value with its caption beneath, spaced as stat_height counts them.
+    local function stat(role)
+        local value = text(texts[role .. "_value"], m.value_face, true, Blitbuffer.COLOR_BLACK)
+        local s = { value = value, caption = text(texts[role .. "_label"], m.label_face),
+            caption_dy = value.h - math.floor(value.h * 0.18) + 1 }
+        if texts[role .. "_icon"] and flame_icon_path then
+            local icon_size = math.max(8, math.floor(value.h * 0.62))
+            local flame = IconWidget:new{ file = flame_icon_path, width = icon_size, height = icon_size, alpha = true }
+            resources[#resources + 1] = flame
+            local size = flame:getSize()
+            s.icon = { widget = flame, w = size.w or 0, h = size.h or 0 }
+        end
+        return s
+    end
+    local mid = m.stats and texts.mid_value and stat("mid") or nil
+    local right = m.stats and texts.right_value and stat("right") or nil
     local row_labels, day_labels = {}, {}
     for col = 0, 6 do
         local letter = WEEKDAY_LETTERS[((start - 1 + col) % 7) + 1]
@@ -441,6 +604,19 @@ function M.build(ctx, cfg, activity)
         end
     end
 
+    -- Value with its icon, caption beneath. `align` is "left" (anchor is the
+    -- left edge) or "right" (anchor is the right edge).
+    local function paint_stat(bb, anchor_x, y, align, st)
+        local icon_w = st.icon and (st.icon.w + S(3)) or 0
+        local left = align == "right" and anchor_x - st.value.w - icon_w or anchor_x
+        if st.icon then
+            st.icon.widget:paintTo(bb, left, y + math.floor((st.value.h - st.icon.h) / 2))
+        end
+        st.value.widget:paintTo(bb, left + icon_w, y)
+        local caption_x = align == "right" and anchor_x - st.caption.w or left
+        st.caption.widget:paintTo(bb, caption_x, y + st.caption_dy)
+    end
+
     local function paint_graph(bb, gx, gy)
         paint_days(bb, gx, gy, false)
         if not month_labels then return end
@@ -464,6 +640,20 @@ function M.build(ctx, cfg, activity)
         else
             paint_left(bb, ox, oy)
             paint_graph(bb, ox + m.left_w, oy)
+        end
+        if m.stats then
+            -- Beside the graph the stats sit centred on the block's height,
+            -- with dividing lines midway between neighbours.
+            local stat_y = oy + math.floor((m.row_a_h - m.stat_h) / 2)
+            if mid then paint_stat(bb, ox + m.mid_x, stat_y, "left", mid) end
+            if right then paint_stat(bb, ox + m.row_w, stat_y, "right", right) end
+            local trim = S(4)
+            if mid then
+                bb:paintRect(ox + m.sep1_x - 1, oy + trim, 2, m.row_a_h - trim * 2, Blitbuffer.COLOR_DARK_GRAY)
+            end
+            if right then
+                bb:paintRect(ox + (mid and m.sep2_x or m.sep1_x) - 1, oy + trim, 2, m.row_a_h - trim * 2, Blitbuffer.COLOR_DARK_GRAY)
+            end
         end
     end)
 

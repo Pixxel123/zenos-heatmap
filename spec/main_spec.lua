@@ -37,6 +37,10 @@ describe("plugin entry", function()
         assert.is_true(cfg.month_labels)
         assert.equals("relative", cfg.shading)
         assert.equals("auto", cfg.size)
+        assert.equals("today_duration", cfg.stat_left)
+        assert.equals("streak", cfg.stat_right)
+        assert.equals("none", ZenHeatmap.normalize({ stat_left = "none", stat_right = "bogus" }).stat_left)
+        assert.equals("streak", ZenHeatmap.normalize({ stat_left = "none", stat_right = "bogus" }).stat_right)
         local odd = ZenHeatmap.normalize({ range = "week", size = "xl", shading = "absolute", typical_week = false })
         assert.equals("year", odd.range)
         assert.equals("auto", odd.size)
@@ -63,6 +67,11 @@ describe("plugin entry", function()
         local height
         for _i, it_ in ipairs(items) do if it_.text_func and it_.text_func():find("Height") then height = it_ end end
         assert.is_table(height)
+        local beside
+        for _i, it_ in ipairs(items) do if it_.text == "Stats beside the graph" then beside = it_ end end
+        assert.is_table(beside)
+        assert.is_false(beside.enabled_func())
+        assert.equals("Left stat: Time today", beside.sub_item_table[1].text_func())
         for _i, opt in ipairs(height.sub_item_table) do if opt.text == "Large" then opt.callback() end end
         assert.equals("l", registered.opts.size)
         assert.equals("l", settings_data.cfg.size)

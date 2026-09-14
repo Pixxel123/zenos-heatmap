@@ -1,7 +1,7 @@
 -- Writes dist/zenheatmap.koplugin.zip (store method, no compression) from
 -- the plugin folder. Run from the repo root: luajit tools/build.lua
 local PLUGIN = "zenheatmap.koplugin"
-local FILES = { "_meta.lua", "main.lua", "heatmap.lua", "dayactivity.lua" }
+local FILES = { "_meta.lua", "main.lua", "heatmap.lua", "dayactivity.lua", "flame.svg" }
 
 local crc_table = {}
 for i = 0, 255 do

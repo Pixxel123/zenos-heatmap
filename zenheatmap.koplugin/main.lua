@@ -15,6 +15,7 @@ ZenHeatmap.ITEM_ID = "zenheatmap.heatmap"
 
 local RANGES = { year = true, quarter = true, month = true }
 local SIZES = { auto = true, s = true, m = true, l = true }
+local STATS = { today_pages = true, today_duration = true, streak = true, week_pages = true, week_duration = true, period_days = true, none = true }
 
 -- Settings with every key present and valid.
 function ZenHeatmap.normalize(cfg)
@@ -25,6 +26,8 @@ function ZenHeatmap.normalize(cfg)
         month_labels = cfg.month_labels ~= false,
         shading = cfg.shading == "absolute" and "absolute" or "relative",
         size = SIZES[cfg.size] and cfg.size or "auto",
+        stat_left = STATS[cfg.stat_left] and cfg.stat_left or "today_duration",
+        stat_right = STATS[cfg.stat_right] and cfg.stat_right or "streak",
     }
 end
 
@@ -44,6 +47,16 @@ local function week_start()
         if v then return v end
     end
     return 2
+end
+
+-- The numbers beside the graph come from ZenOS's own home stats, so they
+-- match its Reading stats widget; without ZenOS's module there are none.
+local function home_stats(cfg)
+    if cfg.range == "year" or (cfg.stat_left == "none" and cfg.stat_right == "none") then return nil end
+    local ok, StatsDB = pcall(require, "common/db_stats")
+    if not (ok and type(StatsDB) == "table" and type(StatsDB.queryHomeStats) == "function") then return nil end
+    local ok2, stats = pcall(StatsDB.queryHomeStats, { "today_pages", "today_duration", "streak", "week_pages", "week_duration" })
+    return ok2 and type(stats) == "table" and stats or nil
 end
 
 function ZenHeatmap:init()
@@ -75,7 +88,7 @@ function ZenHeatmap:register()
         local cfg = ZenHeatmap.normalize(plugin.cfg)
         cfg.week_start = week_start()
         local activity = DayActivity.query(DayActivity.SERIES_DAYS)
-        return Heatmap.build(ctx, cfg, activity)
+        return Heatmap.build(ctx, cfg, activity, home_stats(cfg))
     end, { label = _("Reading heatmap"), size = ZenHeatmap.sizeFor(self.cfg) }) and true or false
 end
 
@@ -112,6 +125,18 @@ function ZenHeatmap:menuItems()
         }
     end
     local range_names = { year = _("Year to date"), quarter = _("3 months"), month = _("Month") }
+    local stat_names = { today_pages = _("Pages today"), today_duration = _("Time today"), streak = _("Day streak"),
+        week_pages = _("Pages this week"), week_duration = _("Time this week"), period_days = _("Days read"), none = _("None") }
+    local stat_order = { "today_pages", "today_duration", "streak", "week_pages", "week_duration", "period_days", "none" }
+    local function stat_menu(text, key)
+        local options = {}
+        for _i, id in ipairs(stat_order) do options[#options + 1] = radio(stat_names[id], key, id) end
+        return {
+            text_func = function() return string.format("%s %s", text, stat_names[plugin.cfg[key]]) end,
+            enabled_func = function() return plugin.cfg.range ~= "year" end,
+            sub_item_table = options,
+        }
+    end
     local size_names = { auto = _("Automatic"), s = _("Small"), m = _("Medium"), l = _("Large") }
     local items = {
         {
@@ -126,6 +151,12 @@ function ZenHeatmap:menuItems()
                 return string.format("%s %s", _("Shading:"), plugin.cfg.shading == "absolute" and _("Fixed thresholds") or _("Relative to my average"))
             end,
             sub_item_table = { radio(_("Relative to my average"), "shading", "relative"), radio(_("Fixed thresholds"), "shading", "absolute") },
+        },
+        {
+            text = _("Stats beside the graph"),
+            help_text = _("In the 3-month and Month ranges two of ZenOS's reading stats sit beside the graph; the year graph takes the whole row."),
+            enabled_func = function() return plugin.cfg.range ~= "year" end,
+            sub_item_table = { stat_menu(_("Left stat:"), "stat_left"), stat_menu(_("Right stat:"), "stat_right") },
         },
         {
             text_func = function() return string.format("%s %s", _("Height:"), size_names[plugin.cfg.size]) end,
