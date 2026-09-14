@@ -53,6 +53,7 @@ as a plugin menu for Launcher and Controls buttons):
 
 | Setting | Values | Default |
 | --- | --- | --- |
+| Show on Home | on, off | off |
 | Range | Year to date, 3 months, Month | Year to date |
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
@@ -103,6 +104,22 @@ with the same clearance rule as ZenOS's stats row, the type stepping down from
 the Reading stats widget's. The row letters take a face sized from the row
 pitch (a capital is about three quarters of the font's pixel size), capped at
 the month labels' size, so all seven always show.
+
+## Show on Home (added later on 14 September)
+
+ZenOS's Widgets list refuses to switch a widget on when Home would go past
+its size budget (10 units on a 4:3 screen; the cover is 3.5, a two-row
+Book strip 5, Reading stats 1, and nothing may be smaller than 1). Home's
+own layout is more forgiving: `Registry.layoutUnits` shrinks the widgets
+that can shrink (cover to 2, strip to 1.5 per row) until an over-full page
+fits. So the plugin's menu carries **Show on Home**, which flips
+`rows.enabled[id]` in the Home layout through ZenOS's `config/preset_store`
+(`getSettings("home")` / `saveSettings("home", layout)`), adds the id to
+`rows.order` under `stats_triplet` if it is not there yet, and re-registers
+so ZenOS rebuilds Home. No note is shown when the page goes over budget:
+the shrink is ZenOS's normal behaviour and needs nothing from the user.
+Switching off keeps ZenOS's rule that Home holds at least one widget. The
+switch is absent when the store cannot be loaded (no ZenOS).
 
 ## Non-goals
 

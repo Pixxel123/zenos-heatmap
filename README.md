@@ -14,8 +14,14 @@ Home is back to stock.
    [latest release](../../releases/latest) and unzip it into
    `koreader/plugins/`, so you have `koreader/plugins/zenheatmap.koplugin/`.
 2. Restart KOReader.
-3. Turn the widget on and place it under **Zen Settings > Home > Widgets >
-   Reading heatmap**.
+3. Turn it on with **Show on Home** under **More tools > Reading heatmap**
+   in the KOReader menu, then move it in Home's edit mode or under
+   **Zen Settings > Home > Widgets**.
+
+**Show on Home** works even when Home is already full and the Widgets list
+says "Not enough Home space": ZenOS then shrinks the other widgets a little
+to make room. Turning the widget on from the Widgets list instead needs a
+free row.
 
 ## Settings
 
@@ -24,6 +30,7 @@ put it on a Launcher or Controls button.
 
 | Setting | Choices | Default |
 | --- | --- | --- |
+| Show on Home | on, off | off |
 | Range | Year to date, 3 months, Month | Year to date |
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |

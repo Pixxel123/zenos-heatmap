@@ -79,6 +79,83 @@ local function hook(name)
     return type(f) == "function" and f or nil
 end
 
+-- ZenOS's Home settings store, once ZenOS is loaded.
+local function preset_store()
+    local ok, PresetStore = pcall(require, "config/preset_store")
+    if ok and type(PresetStore) == "table" and type(PresetStore.getSettings) == "function"
+            and type(PresetStore.saveSettings) == "function" then
+        return PresetStore
+    end
+end
+
+-- The live Home layout with its row tables present.
+local function home_layout(store)
+    local ok, dcfg = pcall(store.getSettings, "home")
+    if not ok or type(dcfg) ~= "table" then return nil end
+    dcfg.rows = type(dcfg.rows) == "table" and dcfg.rows or {}
+    dcfg.rows.enabled = type(dcfg.rows.enabled) == "table" and dcfg.rows.enabled or {}
+    dcfg.rows.order = type(dcfg.rows.order) == "table" and dcfg.rows.order or {}
+    return dcfg
+end
+
+-- Whether ZenOS's Home layout has the widget switched on; nil without ZenOS.
+function ZenHeatmap.homeEnabled()
+    local store = preset_store()
+    local dcfg = store and home_layout(store)
+    if not dcfg then return nil end
+    return dcfg.rows.enabled[ZenHeatmap.ITEM_ID] == true
+end
+
+local function notify(text)
+    local UIManager = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    UIManager:show(InfoMessage:new{ text = text })
+end
+
+-- Switch the widget on or off in ZenOS's Home layout. ZenOS's Widgets list
+-- refuses a widget that would take Home past its size budget, but Home
+-- itself lays out an over-full page by shrinking the widgets that can
+-- shrink, so writing the layout directly lets the heatmap in regardless.
+function ZenHeatmap:setHomeEnabled(on)
+    local store = preset_store()
+    local dcfg = store and home_layout(store)
+    if not dcfg then return false end
+    local rows = dcfg.rows
+    if on then
+        rows.enabled[ZenHeatmap.ITEM_ID] = true
+        local present = false
+        for _i, id in ipairs(rows.order) do
+            if id == ZenHeatmap.ITEM_ID then present = true end
+        end
+        if not present then
+            -- Below the Reading stats row, where ZenOS's own stats sit.
+            local order, placed = {}, false
+            for _i, id in ipairs(rows.order) do
+                order[#order + 1] = id
+                if id == "stats_triplet" then
+                    order[#order + 1] = ZenHeatmap.ITEM_ID
+                    placed = true
+                end
+            end
+            if not placed then order[#order + 1] = ZenHeatmap.ITEM_ID end
+            rows.order = order
+        end
+    else
+        local others = 0
+        for id, value in pairs(rows.enabled) do
+            if value == true and id ~= ZenHeatmap.ITEM_ID then others = others + 1 end
+        end
+        if others == 0 then
+            notify(_("Home keeps at least one widget: switch another one on first."))
+            return false
+        end
+        rows.enabled[ZenHeatmap.ITEM_ID] = false
+    end
+    if not pcall(store.saveSettings, "home", dcfg) then return false end
+    self:register()
+    return true
+end
+
 -- Register (or re-register) the Home item. Re-registering replaces the
 -- builder and options and makes ZenOS rebuild Home.
 function ZenHeatmap:register()
@@ -171,6 +248,15 @@ function ZenHeatmap:menuItems()
             sub_item_table = { radio(_("Automatic"), "size", "auto"), radio(_("Extra small"), "size", "xs"), radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
         },
     }
+    if ZenHeatmap.homeEnabled() ~= nil then
+        table.insert(items, 1, {
+            text = _("Show on Home"),
+            help_text = _("Puts the widget on the ZenOS Home page, even when Home is already full: ZenOS then shrinks the other widgets a little to make room. Move it in Home's edit mode or under Zen Settings > Home > Widgets."),
+            checked_func = function() return ZenHeatmap.homeEnabled() == true end,
+            callback = function() plugin:setHomeEnabled(ZenHeatmap.homeEnabled() ~= true) end,
+            separator = true,
+        })
+    end
     if not hook("REGISTER_HOME_ITEM") then
         table.insert(items, 1, { text = _("ZenOS is not running; the widget appears on the ZenOS Home page."), enabled = false })
     end
