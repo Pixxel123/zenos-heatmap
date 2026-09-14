@@ -14,7 +14,7 @@ local ZenHeatmap = WidgetContainer:extend{
 ZenHeatmap.ITEM_ID = "zenheatmap.heatmap"
 
 local RANGES = { year = true, quarter = true, month = true }
-local SIZES = { auto = true, s = true, m = true, l = true }
+local SIZES = { auto = true, xs = true, s = true, m = true, l = true }
 local STATS = { today_pages = true, today_duration = true, streak = true, week_pages = true, week_duration = true, period_days = true, none = true }
 
 -- Settings with every key present and valid.
@@ -31,11 +31,12 @@ function ZenHeatmap.normalize(cfg)
     }
 end
 
--- Home rows the widget asks ZenOS for: the year graph is width-bound, so
--- two rows hold it; the wider quarter cells and the calendar want three.
+-- Home rows the widget asks ZenOS for: the year graph is width-bound and
+-- fits one row at full size; the taller quarter cells and the calendar
+-- want two.
 function ZenHeatmap.sizeFor(cfg)
     if cfg.size and cfg.size ~= "auto" then return cfg.size end
-    return cfg.range == "year" and "s" or "m"
+    return cfg.range == "year" and "xs" or "s"
 end
 
 -- The statistics plugin's week start: 1 = Sunday .. 7 = Saturday, Monday by default.
@@ -143,7 +144,7 @@ function ZenHeatmap:menuItems()
             sub_item_table = options,
         }
     end
-    local size_names = { auto = _("Automatic"), s = _("Small"), m = _("Medium"), l = _("Large") }
+    local size_names = { auto = _("Automatic"), xs = _("Extra small"), s = _("Small"), m = _("Medium"), l = _("Large") }
     local items = {
         {
             text_func = function() return string.format("%s %s", _("Range:"), range_names[plugin.cfg.range]) end,
@@ -166,8 +167,8 @@ function ZenHeatmap:menuItems()
         },
         {
             text_func = function() return string.format("%s %s", _("Height:"), size_names[plugin.cfg.size]) end,
-            help_text = _("Rows of the ZenOS Home grid the widget takes: small is two, medium three, large four. Automatic is two for the year and three for the 3-month and Month ranges."),
-            sub_item_table = { radio(_("Automatic"), "size", "auto"), radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
+            help_text = _("Rows of the ZenOS Home grid the widget takes: extra small is one, small two, medium three, large four. Automatic is one for the year and two for the 3-month and Month ranges."),
+            sub_item_table = { radio(_("Automatic"), "size", "auto"), radio(_("Extra small"), "size", "xs"), radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
         },
     }
     if not hook("REGISTER_HOME_ITEM") then

@@ -29,7 +29,7 @@ put it on a Launcher or Controls button.
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
 | Stats beside the graph | Two of: pages today, time today, day streak, pages this week, time this week, days read, or none. 3 months and Month only. | Time today, Day streak |
-| Height | Automatic, Small, Medium, Large | Automatic |
+| Height | Automatic, Extra small, Small, Medium, Large (1 to 4 Home rows) | Automatic: 1 row for the year, 2 otherwise |
 
 Darker cells mean more reading: relative shading compares each day with your
 own recent average, fixed shading uses 15 and 60 minutes. Today has a border.

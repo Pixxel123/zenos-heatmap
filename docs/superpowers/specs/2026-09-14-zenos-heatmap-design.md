@@ -58,7 +58,7 @@ as a plugin menu for Launcher and Controls buttons):
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
 | Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None | Time today, Day streak |
-| Height | Automatic, Small (2 units), Medium (3), Large (4) | Automatic (2 for year, 3 otherwise) |
+| Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (1 for year, 2 otherwise) |
 
 Changing a setting saves and re-registers the item, which makes ZenOS rebuild
 Home. Enabling and positioning the widget is done in ZenOS under
