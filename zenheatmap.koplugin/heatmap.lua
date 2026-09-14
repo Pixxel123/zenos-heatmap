@@ -228,48 +228,61 @@ end
 -- track down its left side. The grid grows into spare room; a short row
 -- shrinks the cells under the month labels as far as S(6), drops the
 -- labels only when the cells would have to go below that, then shrinks
--- the cells to S(4) and closes the gaps. The graph is width-bound, so
--- stats beside it stack in one column at the right, one line each (bold
--- value, then its caption), behind a single dividing line; the column
--- takes only the width it needs and the graph gets the rest. The layout
--- counts as complete once the cells are within S(1) of what the graph
--- alone would get (up to S(YEAR_STAT_CELL)) and the column is no taller
--- than the graph, so fitLayout steps the type down until both hold.
-local YEAR_STAT_CELL = 7
-local YEAR_STAT_CELL_MIN = 5
-local YEAR_STACK_MIN_SIZE = 4
+-- the cells to S(4) and closes the gaps. With ZenOS's stats on, a row of
+-- them (value over caption, equal cells, dividers) sits above the graph
+-- and the graph takes what is left; fitLayout steps the type down until
+-- the graph is complete under it.
 local function layout_year(m, cfg, avail_h)
     local cols = m.span.weeks
     local labels_wanted = cfg.month_labels ~= false
-    local labels_h = S(3) + m.month_label_h
     m.gap = S(2)
     m.left_w = left_block_w(m)
-    local alone_w = m.inner_w - m.left_w
-    if m.stats then
-        m.stack = true
-        m.col_w = math.max(m.mid_line_w, m.right_line_w)
-        m.col_x = m.inner_w - m.col_w
-        local n = (m.mid_line_w > 0 and 1 or 0) + (m.right_line_w > 0 and 1 or 0)
-        m.stack_gap = S(4)
-        m.stack_h = n * m.line_h + (n - 1) * m.stack_gap
+    if m.above then
+        avail_h = avail_h - m.above_h
+        local cell_w = math.floor(m.inner_w / m.above_n)
+        m.fits_w = m.above_max_w + 2 * S(SEP_CLEAR) <= cell_w
     end
-    local graph_w = (m.stats and (m.col_x - 2 * S(SEP_CLEAR)) or m.inner_w) - m.left_w
+    local graph_w = m.inner_w - m.left_w
     local by_w = math.floor((graph_w - (cols - 1) * m.gap) / cols)
     local cell_max = math.max(S(4), math.min(S(8), by_w))
-    local cell_labelled_min = math.min(S(6), cell_max)
-    local function by_h(with_labels)
-        return math.floor((avail_h - (with_labels and labels_h or 0) - 6 * m.gap) / 7)
+    local function by_h(labels_h)
+        return math.floor((avail_h - labels_h - 6 * m.gap) / 7)
     end
-    m.labels = labels_wanted and by_h(true) >= cell_labelled_min
-    local room = by_h(m.labels)
-    if room >= cell_max then
-        m.cell = math.max(cell_max, math.min(S(14), by_w, room))
-    else
-        if room < S(4) then
-            m.gap = S(1)
-            room = by_h(false)
+    -- Month labels stay whenever they are wanted. They take the month face
+    -- while it costs the cells nothing; in a shorter row their face follows
+    -- the row pitch like the weekday letters, so labels and cells shrink
+    -- together.
+    local labels_h = 0
+    m.labels = labels_wanted
+    if labels_wanted then
+        labels_h = S(3) + m.month_label_h
+        if by_h(labels_h) < cell_max then
+            local cell = by_h(0)
+            for _pass = 1, 2 do
+                local face = row_face_for(math.max(S(4), cell) + m.gap)
+                m.month_face, labels_h = face, S(3) + select(2, m.probe("W", face))
+                cell = by_h(labels_h)
+            end
         end
-        m.cell = math.max(S(4), math.min(cell_max, room))
+    end
+    local function solve(lh, floor)
+        m.gap = S(2)
+        local room = by_h(lh)
+        if room >= cell_max then
+            return math.max(cell_max, math.min(S(14), by_w, room))
+        end
+        if room < floor then
+            m.gap = S(1)
+            room = by_h(lh)
+        end
+        return math.max(floor, math.min(cell_max, room))
+    end
+    -- Labelled, the cells may go as small as S(3) to keep the labels.
+    m.cell = solve(labels_h, m.labels and S(3) or S(4))
+    -- Only when even the smallest cells and labels overflow do the labels go.
+    if m.labels and m.cell * 7 + m.gap * 6 + labels_h > avail_h then
+        m.labels, labels_h = false, 0
+        m.cell = solve(0, S(4))
     end
     m.grid_w, m.grid_h = grid_size(m.cell, m.gap, cols, 7)
     -- Integer cells leave up to a column's worth of slack on the right; the
@@ -282,20 +295,9 @@ local function layout_year(m, cfg, avail_h)
     m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
     local block_h = m.grid_h + (m.labels and labels_h or 0)
-    m.row_a_h = m.stats and math.max(block_h, m.stack_h) or block_h
-    -- A taller column centres the graph on itself.
-    m.block_y = math.floor((m.row_a_h - block_h) / 2)
-    m.content_h = m.pad_y + m.row_a_h
-    m.cell1_w = m.left_w + m.grid_w
-    local alone_cell = math.max(S(4), math.min(S(14), math.floor((alone_w - (cols - 1) * m.gap) / cols)))
-    local target = math.max(S(4), math.min(S(YEAR_STAT_CELL), alone_cell - S(1)))
+    m.block_y = m.above and m.above_h or 0
+    m.content_h = m.pad_y + m.block_y + block_h
     m.complete = m.cell >= cell_max and (m.labels or not labels_wanted)
-        and (not m.stats or (m.cell >= target and m.stack_h <= block_h))
-    if m.stats then
-        m.row_w = m.inner_w
-        m.sep1_x = math.floor((m.cell1_w + m.col_x) / 2)
-        m.fits_w = m.cell1_w + 2 * S(SEP_CLEAR) <= m.col_x
-    end
 end
 
 -- Quarter and month: cells shrink from `cell_max` to `cell_min` until the
@@ -365,7 +367,8 @@ end
 -- the graph.
 local function layout(width, height, cfg, span, value_size, texts, probe)
     local m = { range = cfg.range or "year", typical = cfg.typical_week ~= false, span = span }
-    m.stats = texts ~= nil and (texts.mid_value ~= nil or texts.right_value ~= nil)
+    local row = texts and texts.row
+    m.stats = texts ~= nil and (texts.mid_value ~= nil or texts.right_value ~= nil or (row ~= nil and #row > 0))
     m.cell_gap = S(14)
     local value_face, label_face = faces(value_size)
     m.value_size, m.value_face, m.label_face = value_size, value_face, label_face
@@ -379,14 +382,14 @@ local function layout(width, height, cfg, span, value_size, texts, probe)
     end
     m.mid_w = m.stats and stat_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
     m.right_w = m.stats and stat_w(texts.right_value, texts.right_label, texts.right_icon) or 0
-    -- One-line shape for the year's column: icon, value, a gap, caption.
-    local function line_w(value, label, icon)
-        if not (texts and value) then return 0 end
-        return (icon and icon_w or 0) + (probe(value, value_face, true)) + S(6) + (probe(label, label_face))
+    -- The year's row of stats above the graph: widest stat and row height.
+    if m.stats and row and #row > 0 then
+        m.above, m.above_n, m.above_max_w = true, #row, 0
+        for _i, st in ipairs(row) do
+            m.above_max_w = math.max(m.above_max_w, stat_w(st.value, st.label, st.icon))
+        end
+        m.above_h = m.stat_h + S(10)
     end
-    m.line_h = value_h
-    m.mid_line_w = m.stats and line_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
-    m.right_line_w = m.stats and line_w(texts.right_value, texts.right_label, texts.right_icon) or 0
     m.fits_w = true
     m.pad_x = S(6)
     m.pad_y = S(6)
@@ -395,6 +398,7 @@ local function layout(width, height, cfg, span, value_size, texts, probe)
     -- calendar's column letters take the caption face.
     m.month_face = Font:getFace("smallinfofont", S(7))
     m.letter_face = Font:getFace("smallinfofont", S(11))
+    m.probe = probe
     m.month_label_h = select(2, probe("W", m.month_face))
     m.label_h = select(2, probe("A", m.letter_face))
     m.letter_w = 0
@@ -421,24 +425,26 @@ function M.layoutAt(width, height, cfg, span, value_size, texts, probe)
     return layout(width, height, cfg, span, value_size, texts, probe or text_prober())
 end
 
--- With stats beside the graph, the largest type whose row fits; without
--- them the one layout there is. Beside the year graph the stats give way
--- when even the smallest type would leave the cells under S(5): the graph
--- then stands alone.
+-- With stats, the largest type whose row fits; without them the one
+-- layout there is. Over the year graph the stats give way when the row
+-- never fits: the graph then stands alone.
 function M.fitLayout(width, height, cfg, span, texts, probe)
     probe = probe or text_prober()
     local best, last
-    local floor_size = (cfg.range or "year") == "year" and texts and YEAR_STACK_MIN_SIZE or MIN_VALUE_SIZE
-    for size = value_size_for(cfg), floor_size, -1 do
+    for size = value_size_for(cfg), MIN_VALUE_SIZE, -1 do
         local m = layout(width, height, cfg, span, size, texts, probe)
         last = m
         if not m.stats then return m end
         if m.fits_h and m.fits_w then
             if m.complete then return m end
-            if not best or (m.cell or 0) > (best.cell or 0) then best = m end
+            -- Labels outrank cell size; then the larger cell wins.
+            if not best or (m.labels and not best.labels)
+                    or (m.labels == best.labels and (m.cell or 0) > (best.cell or 0)) then
+                best = m
+            end
         end
     end
-    if last.range == "year" and not (best and best.cell >= S(YEAR_STAT_CELL_MIN)) then
+    if last.range == "year" and not best then
         return layout(width, height, cfg, span, value_size_for(cfg), nil, probe)
     end
     return best or last
@@ -509,7 +515,18 @@ function M.build(ctx, cfg, activity, stats)
     end
     local extra = { period_days = period_days, period_caption = period_caption }
     local texts
-    if type(stats) == "table" then
+    if type(stats) == "table" and range == "year" then
+        -- ZenOS's own three, in a row above the graph.
+        texts = { row = {} }
+        for _i, id in ipairs(cfg.stat_fields or {}) do
+            local field = M.FIELDS[id]
+            if field and #texts.row < 3 then
+                texts.row[#texts.row + 1] = { value = field.value(stats, extra), label = field.caption(stats, extra),
+                    icon = flame_icon_path ~= nil and field.icon or false }
+            end
+        end
+        if #texts.row == 0 then texts = nil end
+    elseif type(stats) == "table" then
         texts = {}
         for role, id in pairs({ mid = cfg.stat_left, right = cfg.stat_right }) do
             local field = M.FIELDS[id]
@@ -532,11 +549,11 @@ function M.build(ctx, cfg, activity, stats)
         return { widget = w, w = size.w or 0, h = size.h or 0 }
     end
     -- A value with its caption beneath, spaced as stat_height counts them.
-    local function stat(role)
-        local value = text(texts[role .. "_value"], m.value_face, true, Blitbuffer.COLOR_BLACK)
-        local s = { value = value, caption = text(texts[role .. "_label"], m.label_face),
+    local function stat_from(value_str, label_str, with_icon)
+        local value = text(value_str, m.value_face, true, Blitbuffer.COLOR_BLACK)
+        local s = { value = value, caption = text(label_str, m.label_face),
             caption_dy = value.h - math.floor(value.h * 0.18) + 1 }
-        if texts[role .. "_icon"] and flame_icon_path then
+        if with_icon and flame_icon_path then
             local icon_size = math.max(8, math.floor(value.h * 0.62))
             local flame = IconWidget:new{ file = flame_icon_path, width = icon_size, height = icon_size, alpha = true }
             resources[#resources + 1] = flame
@@ -545,8 +562,13 @@ function M.build(ctx, cfg, activity, stats)
         end
         return s
     end
+    local function stat(role) return stat_from(texts[role .. "_value"], texts[role .. "_label"], texts[role .. "_icon"]) end
     local mid = m.stats and texts.mid_value and stat("mid") or nil
     local right = m.stats and texts.right_value and stat("right") or nil
+    local row_stats = {}
+    if m.above then
+        for i, st in ipairs(texts.row) do row_stats[i] = stat_from(st.value, st.label, st.icon) end
+    end
     local row_labels, day_labels = {}, {}
     for col = 0, 6 do
         local letter = WEEKDAY_LETTERS[((start - 1 + col) % 7) + 1]
@@ -645,23 +667,15 @@ function M.build(ctx, cfg, activity, stats)
     -- left edge) or "right" (anchor is the right edge).
     local function paint_stat(bb, anchor_x, y, align, st)
         local icon_w = st.icon and (st.icon.w + S(3)) or 0
-        local left = align == "right" and anchor_x - st.value.w - icon_w or anchor_x
+        local left = align == "right" and anchor_x - st.value.w - icon_w
+            or align == "center" and anchor_x - math.floor((st.value.w + icon_w) / 2) or anchor_x
         if st.icon then
             st.icon.widget:paintTo(bb, left, y + math.floor((st.value.h - st.icon.h) / 2))
         end
         st.value.widget:paintTo(bb, left + icon_w, y)
-        local caption_x = align == "right" and anchor_x - st.caption.w or left
+        local caption_x = align == "right" and anchor_x - st.caption.w
+            or align == "center" and anchor_x - math.floor(st.caption.w / 2) or left
         st.caption.widget:paintTo(bb, caption_x, y + st.caption_dy)
-    end
-
-    -- One line: icon, bold value, then the caption sitting near its baseline.
-    local function paint_stat_line(bb, x, y, st)
-        local icon_w = st.icon and (st.icon.w + S(3)) or 0
-        if st.icon then
-            st.icon.widget:paintTo(bb, x, y + math.floor((st.value.h - st.icon.h) / 2))
-        end
-        st.value.widget:paintTo(bb, x + icon_w, y)
-        st.caption.widget:paintTo(bb, x + icon_w + st.value.w + S(6), y + math.floor((st.value.h - st.caption.h) * 0.7))
     end
 
     local function paint_graph(bb, gx, gy)
@@ -689,14 +703,16 @@ function M.build(ctx, cfg, activity, stats)
             paint_left(bb, ox, gy)
             paint_graph(bb, ox + m.left_w, gy)
         end
-        if m.stack then
-            -- Beside the year graph the stats stack in a column at the right,
-            -- centred on the block's height, behind one dividing line.
+        if m.above then
+            -- ZenOS's stats in equal cells over the graph, dividers between.
+            local slot_w = math.floor(m.inner_w / m.above_n)
             local trim = S(4)
-            local sy = oy + math.floor((m.row_a_h - m.stack_h) / 2)
-            if mid then paint_stat_line(bb, ox + m.col_x, sy, mid); sy = sy + m.line_h + m.stack_gap end
-            if right then paint_stat_line(bb, ox + m.col_x, sy, right) end
-            bb:paintRect(ox + m.sep1_x - 1, oy + trim, 2, m.row_a_h - trim * 2, Blitbuffer.COLOR_DARK_GRAY)
+            for i, st in ipairs(row_stats) do
+                paint_stat(bb, ox + math.floor((i - 0.5) * slot_w), oy, "center", st)
+                if i > 1 then
+                    bb:paintRect(ox + (i - 1) * slot_w - 1, oy + trim, 2, m.stat_h - trim * 2, Blitbuffer.COLOR_DARK_GRAY)
+                end
+            end
         elseif m.stats then
             -- Beside the graph the stats sit centred on the block's height,
             -- with dividing lines midway between neighbours.

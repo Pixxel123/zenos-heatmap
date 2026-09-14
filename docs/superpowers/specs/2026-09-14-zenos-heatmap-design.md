@@ -42,7 +42,9 @@ Decided from a design critique and a side-by-side mock on 14 September:
   light, up to 1.25 times normal, above heavy), or fixed thresholds at 15 and
   60 minutes. Relative falls back to fixed when there is no history.
 - **Month labels** under the row graphs, one at each month's first column,
-  skipped when they would collide. Toggle.
+  skipped when they would collide. Toggle. When on they always stay: in a
+  short year row their face follows the row pitch like the weekday letters,
+  and only when even S(4) cells with the smallest face overflow do they go.
 - **Empty cells are outlined, not filled white**, so a library background
   image shows through.
 
@@ -59,8 +61,9 @@ as a plugin menu for Launcher and Controls buttons):
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None | Time today, Day streak |
-| Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (1 for year, 2 otherwise) |
+| ZenOS stats above the year graph | on, off | on |
+| Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None (3 months and Month) | Time today, Day streak |
+| Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (2; 1 for the year without its stats) |
 
 Changing a setting saves and re-registers the item, which makes ZenOS rebuild
 Home. Enabling and positioning the widget is done in ZenOS under
@@ -105,18 +108,16 @@ the Reading stats widget's. The row letters take a face sized from the row
 pitch (a capital is about three quarters of the font's pixel size), capped at
 the month labels' size, so all seven always show.
 
-The year graph is width-bound, so beside it the two stats stack in one
-column at the right edge, one line each (bold value, then its caption),
-left-aligned, behind a single dividing line with the usual clearance; the
-column takes only the width it needs at the current type size and the graph
-gets the rest. One Home row is only about 136 px, where ZenOS-style
-value-over-caption stats cannot stack, hence the one-line shape and a type
-floor of 4 rather than 8 here. The type steps down until the cells are within
-S(1) of what the graph alone would get (up to S(7)) and the column is no
-taller than the graph; if even the smallest type would leave the cells under
-S(5), or the row never fits, the stats are dropped and the graph stands alone.
-Added on request so the widget can carry the numbers itself and the separate
-Reading stats row can go.
+The year graph is width-bound, so its stats do not sit beside it. Instead
+the three fields ZenOS shows in its Reading stats widget (read from the Home
+layout's `middle_stats_triplet`, defaults pages today, time today, day
+streak) form a row above the graph: equal cells, value over caption, centred,
+dividers between, the same type stepping from 18 down to 8 until the graph
+under it is complete. One Home row cannot hold both, so automatic height asks
+for two rows when this is on (the "ZenOS stats above the year graph" toggle,
+default on) and one when it is off. If the row never fits, the graph stands
+alone. Asked for so the widget can replace the Reading stats row and the
+year graph keeps a row to itself.
 
 ## Show on Home (added later on 14 September)
 

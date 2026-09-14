@@ -28,15 +28,33 @@ function ZenHeatmap.normalize(cfg)
         size = SIZES[cfg.size] and cfg.size or "auto",
         stat_left = STATS[cfg.stat_left] and cfg.stat_left or "today_duration",
         stat_right = STATS[cfg.stat_right] and cfg.stat_right or "streak",
+        year_stats = cfg.year_stats ~= false,
     }
 end
 
--- Home rows the widget asks ZenOS for: the year graph is width-bound and
--- fits one row at full size; the taller quarter cells and the calendar
--- want two.
+-- Home rows the widget asks ZenOS for: the year graph alone is width-bound
+-- and fits one row; with ZenOS's stats over it, and for the taller quarter
+-- cells and the calendar, two.
 function ZenHeatmap.sizeFor(cfg)
     if cfg.size and cfg.size ~= "auto" then return cfg.size end
-    return cfg.range == "year" and "xs" or "s"
+    return (cfg.range == "year" and cfg.year_stats == false) and "xs" or "s"
+end
+
+-- The three fields ZenOS shows in its Reading stats widget, from its Home
+-- layout; its defaults when that cannot be read.
+local ZEN_TRIPLET = { "today_pages", "today_duration", "streak" }
+function ZenHeatmap.zenStatFields()
+    local ok, PresetStore = pcall(require, "config/preset_store")
+    local triplet
+    if ok and type(PresetStore) == "table" and type(PresetStore.getSettings) == "function" then
+        local ok2, dcfg = pcall(PresetStore.getSettings, "home")
+        triplet = ok2 and type(dcfg) == "table" and dcfg.middle_stats_triplet or nil
+    end
+    local out = {}
+    for _i, id in ipairs(type(triplet) == "table" and triplet or {}) do
+        if Heatmap.FIELDS[id] then out[#out + 1] = id end
+    end
+    return #out > 0 and out or ZEN_TRIPLET
 end
 
 -- The statistics plugin's week start: 1 = Sunday .. 7 = Saturday, Monday by default.
@@ -53,7 +71,11 @@ end
 -- The numbers beside the graph come from ZenOS's own home stats, so they
 -- match its Reading stats widget; without ZenOS's module there are none.
 local function home_stats(cfg)
-    if cfg.stat_left == "none" and cfg.stat_right == "none" then return nil end
+    if cfg.range == "year" then
+        if not cfg.year_stats then return nil end
+    elseif cfg.stat_left == "none" and cfg.stat_right == "none" then
+        return nil
+    end
     local ok, StatsDB = pcall(require, "common/db_stats")
     if not (ok and type(StatsDB) == "table" and type(StatsDB.queryHomeStats) == "function") then return nil end
     local ok2, stats = pcall(StatsDB.queryHomeStats, { "today_pages", "today_duration", "streak", "week_pages", "week_duration" })
@@ -165,6 +187,7 @@ function ZenHeatmap:register()
     return register(ZenHeatmap.ITEM_ID, function(ctx)
         local cfg = ZenHeatmap.normalize(plugin.cfg)
         cfg.week_start = week_start()
+        if cfg.range == "year" and cfg.year_stats then cfg.stat_fields = ZenHeatmap.zenStatFields() end
         local activity = DayActivity.query(DayActivity.SERIES_DAYS)
         return Heatmap.build(ctx, cfg, activity, home_stats(cfg))
     end, {
@@ -235,14 +258,17 @@ function ZenHeatmap:menuItems()
             end,
             sub_item_table = { radio(_("Relative to my average"), "shading", "relative"), radio(_("Fixed thresholds"), "shading", "absolute") },
         },
+        toggle(_("ZenOS stats above the year graph"), "year_stats",
+            _("The three numbers of ZenOS's Reading stats widget in a row over the year graph, so the widget can stand in for that row. The year then takes two Home rows in automatic height.")),
         {
             text = _("Stats beside the graph"),
-            help_text = _("Two of ZenOS's reading stats sit beside the graph. In the year range the graph gives up some width to them; on a narrow screen it keeps the row to itself."),
+            help_text = _("In the 3-month and Month ranges two of ZenOS's reading stats sit beside the graph."),
+            enabled_func = function() return plugin.cfg.range ~= "year" end,
             sub_item_table = { stat_menu(_("Left stat:"), "stat_left"), stat_menu(_("Right stat:"), "stat_right") },
         },
         {
             text_func = function() return string.format("%s %s", _("Height:"), size_names[plugin.cfg.size]) end,
-            help_text = _("Rows of the ZenOS Home grid the widget takes: extra small is one, small two, medium three, large four. Automatic is one for the year and two for the 3-month and Month ranges."),
+            help_text = _("Rows of the ZenOS Home grid the widget takes: extra small is one, small two, medium three, large four. Automatic is two, or one for the year graph without ZenOS's stats over it."),
             sub_item_table = { radio(_("Automatic"), "size", "auto"), radio(_("Extra small"), "size", "xs"), radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
         },
     }
