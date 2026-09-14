@@ -284,11 +284,14 @@ local function layout_year(m, cfg, avail_h)
         m.labels, labels_h = false, 0
         m.cell = solve(0, S(4))
     end
-    m.grid_w, m.grid_h = grid_size(m.cell, m.gap, cols, 7)
+    -- Height-bound cells widen up to 2:1 so the graph still fills the row.
+    m.cell_w = m.cell < math.min(S(14), by_w) and math.min(m.cell * 2, by_w) or m.cell
+    m.grid_w = m.cell_w * cols + m.gap * (cols - 1)
+    m.grid_h = m.cell * 7 + m.gap * 6
     -- Integer cells leave up to a column's worth of slack on the right; the
     -- columns spread across the graph's width instead.
     if m.cell >= S(6) and m.grid_w < graph_w and graph_w - m.grid_w <= cols * S(2) then
-        m.col_span = graph_w - m.cell
+        m.col_span = graph_w - m.cell_w
         m.grid_w = graph_w
     end
     m.track_w = track_width(m, m.cell, m.gap)

@@ -86,6 +86,8 @@ describe("heatmap layout", function()
         assert.is_true(short.cell < tall.cell)
         assert.is_true(short.content_h <= 70)
         assert.is_true(short.labels)
+        assert.equals(short.cell * 2, short.cell_w) -- widened to fill the row
+        assert.equals(tall.cell, tall.cell_w)
         local tiny = Heatmap.layout(1000, 40, cfg{}, YEAR)
         assert.is_false(tiny.labels)
         assert.is_true(tiny.content_h <= 40)
