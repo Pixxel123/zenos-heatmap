@@ -35,14 +35,16 @@ put it on a Launcher or Controls button.
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| Stats beside the graph | Two of: pages today, time today, day streak, pages this week, time this week, days read, or none. 3 months and Month only. | Time today, Day streak |
+| Stats beside the graph | Two of: pages today, time today, day streak, pages this week, time this week, days read, or none | Time today, Day streak |
 | Height | Automatic, Extra small, Small, Medium, Large (1 to 4 Home rows) | Automatic: 1 row for the year, 2 otherwise |
 
 Darker cells mean more reading: relative shading compares each day with your
-own recent average, fixed shading uses 15 and 60 minutes. Today has a border.
+own recent average, fixed shading uses 15 and 60 minutes. Today has a thick border around it.
 The typical week shows each weekday's average over the last 12 weeks as a bar,
 filled towards your best weekday and shaded like the cells. The week starts on
-the day set in KOReader's statistics plugin.
+the day set in KOReader's statistics plugin. The stats are ZenOS's own numbers,
+so with two of them beside the year graph the widget can stand in for the
+Reading stats row and save a Home row.
 
 ## Compatibility
 

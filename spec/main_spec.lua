@@ -96,7 +96,7 @@ describe("plugin entry", function()
         local beside
         for _i, it_ in ipairs(items) do if it_.text == "Stats beside the graph" then beside = it_ end end
         assert.is_table(beside)
-        assert.is_false(beside.enabled_func())
+        assert.is_nil(beside.enabled_func)
         assert.equals("Left stat: Time today", beside.sub_item_table[1].text_func())
         for _i, opt in ipairs(height.sub_item_table) do if opt.text == "Large" then opt.callback() end end
         assert.equals("l", registered.opts.size)

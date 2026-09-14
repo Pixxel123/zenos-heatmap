@@ -71,7 +71,7 @@ local function value_size_for(cfg)
 end
 local function faces(value_size)
     return Font:getFace("smallinfofont", S(value_size)),
-        Font:getFace("smallinfofont", S(math.max(6, math.floor(value_size * 0.6))))
+        Font:getFace("smallinfofont", S(math.max(4, math.floor(value_size * 0.6))))
 end
 -- Height of a value with its caption drawn beneath it, as paint_stat lays them out.
 local function stat_height(value_h, label_h)
@@ -155,23 +155,6 @@ function M.spanFor(range, now, start)
     return nil
 end
 
--- Dotted rectangle outline from short paintRect dashes; Blitbuffer has no
--- dashed border.
-local function paint_dotted_border(bb, x, y, w, h, thick, color)
-    local dash = math.max(2, thick * 2)
-    local step = dash * 2
-    for dx = 0, w - 1, step do
-        local len = math.min(dash, w - dx)
-        bb:paintRect(x + dx, y, len, thick, color)
-        bb:paintRect(x + dx, y + h - thick, len, thick, color)
-    end
-    for dy = 0, h - 1, step do
-        local len = math.min(dash, h - dy)
-        bb:paintRect(x, y + dy, thick, len, color)
-        bb:paintRect(x + w - thick, y + dy, thick, len, color)
-    end
-end
-
 -- Empty cells are outlined rather than filled white so a library background
 -- image shows through, matching home_frame_bg.
 local function paint_cell(bb, x, y, w, h, level)
@@ -225,18 +208,52 @@ local function left_block_w(m)
     return m.letter_w + S(5) + (m.typical and (S(TRACK_MAX) + S(6) + S(1) + S(6)) or 0)
 end
 
+-- The two stat cells beside a graph: slot 2 centred between the graph and
+-- slot 3, which sits flush right; dividing lines midway between neighbours.
+-- The row is wide enough once each line keeps SEP_CLEAR from the text.
+local function place_row_a(m, row_w)
+    m.row_w = row_w
+    m.cell3_x = row_w - m.right_w
+    m.cell2_x = m.cell1_w + m.cell_gap
+    m.cell2_w = m.cell3_x - m.cell_gap - m.cell2_x
+    m.mid_x = m.cell2_x + math.floor((m.cell2_w - m.mid_w) / 2)
+    m.sep1_x = math.floor((m.cell1_w + m.mid_x) / 2)
+    m.sep2_x = math.floor((m.mid_x + m.mid_w + m.cell3_x) / 2)
+    if m.mid_w == 0 then m.sep1_x = math.floor((m.cell1_w + m.cell3_x) / 2) end
+    local min_slack = 2 * math.max(0, 2 * S(SEP_CLEAR) - m.cell_gap)
+    m.fits_w = m.mid_w == 0 or m.cell2_w - m.mid_w >= min_slack
+end
+
 -- Year to date: a week-column graph of the whole year with the letters and
 -- track down its left side. The grid grows into spare room; a short row
 -- shrinks the cells under the month labels as far as S(6), drops the
 -- labels only when the cells would have to go below that, then shrinks
--- the cells to S(4) and closes the gaps.
+-- the cells to S(4) and closes the gaps. The graph is width-bound, so
+-- stats beside it stack in one column at the right, one line each (bold
+-- value, then its caption), behind a single dividing line; the column
+-- takes only the width it needs and the graph gets the rest. The layout
+-- counts as complete once the cells are within S(1) of what the graph
+-- alone would get (up to S(YEAR_STAT_CELL)) and the column is no taller
+-- than the graph, so fitLayout steps the type down until both hold.
+local YEAR_STAT_CELL = 7
+local YEAR_STAT_CELL_MIN = 5
+local YEAR_STACK_MIN_SIZE = 4
 local function layout_year(m, cfg, avail_h)
     local cols = m.span.weeks
     local labels_wanted = cfg.month_labels ~= false
     local labels_h = S(3) + m.month_label_h
     m.gap = S(2)
     m.left_w = left_block_w(m)
-    local graph_w = m.inner_w - m.left_w
+    local alone_w = m.inner_w - m.left_w
+    if m.stats then
+        m.stack = true
+        m.col_w = math.max(m.mid_line_w, m.right_line_w)
+        m.col_x = m.inner_w - m.col_w
+        local n = (m.mid_line_w > 0 and 1 or 0) + (m.right_line_w > 0 and 1 or 0)
+        m.stack_gap = S(4)
+        m.stack_h = n * m.line_h + (n - 1) * m.stack_gap
+    end
+    local graph_w = (m.stats and (m.col_x - 2 * S(SEP_CLEAR)) or m.inner_w) - m.left_w
     local by_w = math.floor((graph_w - (cols - 1) * m.gap) / cols)
     local cell_max = math.max(S(4), math.min(S(8), by_w))
     local cell_labelled_min = math.min(S(6), cell_max)
@@ -254,7 +271,6 @@ local function layout_year(m, cfg, avail_h)
         end
         m.cell = math.max(S(4), math.min(cell_max, room))
     end
-    m.complete = m.cell >= cell_max and (m.labels or not labels_wanted)
     m.grid_w, m.grid_h = grid_size(m.cell, m.gap, cols, 7)
     -- Integer cells leave up to a column's worth of slack on the right; the
     -- columns spread across the graph's width instead.
@@ -265,7 +281,21 @@ local function layout_year(m, cfg, avail_h)
     m.track_w = track_width(m, m.cell, m.gap)
     m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
-    m.content_h = m.pad_y + m.grid_h + (m.labels and labels_h or 0)
+    local block_h = m.grid_h + (m.labels and labels_h or 0)
+    m.row_a_h = m.stats and math.max(block_h, m.stack_h) or block_h
+    -- A taller column centres the graph on itself.
+    m.block_y = math.floor((m.row_a_h - block_h) / 2)
+    m.content_h = m.pad_y + m.row_a_h
+    m.cell1_w = m.left_w + m.grid_w
+    local alone_cell = math.max(S(4), math.min(S(14), math.floor((alone_w - (cols - 1) * m.gap) / cols)))
+    local target = math.max(S(4), math.min(S(YEAR_STAT_CELL), alone_cell - S(1)))
+    m.complete = m.cell >= cell_max and (m.labels or not labels_wanted)
+        and (not m.stats or (m.cell >= target and m.stack_h <= block_h))
+    if m.stats then
+        m.row_w = m.inner_w
+        m.sep1_x = math.floor((m.cell1_w + m.col_x) / 2)
+        m.fits_w = m.cell1_w + 2 * S(SEP_CLEAR) <= m.col_x
+    end
 end
 
 -- Quarter and month: cells shrink from `cell_max` to `cell_min` until the
@@ -281,22 +311,6 @@ local function fit_block(m, avail_h, cell_max, cell_min, left_h)
     m.row_a_h = block_h(cell, gap)
     m.content_h = m.pad_y + m.row_a_h
     m.complete = m.row_a_h <= avail_h
-end
-
--- The two stat cells beside a graph: slot 2 centred between the graph and
--- slot 3, which sits flush right; dividing lines midway between neighbours.
--- The row is wide enough once each line keeps SEP_CLEAR from the text.
-local function place_row_a(m, row_w)
-    m.row_w = row_w
-    m.cell3_x = row_w - m.right_w
-    m.cell2_x = m.cell1_w + m.cell_gap
-    m.cell2_w = m.cell3_x - m.cell_gap - m.cell2_x
-    m.mid_x = m.cell2_x + math.floor((m.cell2_w - m.mid_w) / 2)
-    m.sep1_x = math.floor((m.cell1_w + m.mid_x) / 2)
-    m.sep2_x = math.floor((m.mid_x + m.mid_w + m.cell3_x) / 2)
-    if m.mid_w == 0 then m.sep1_x = math.floor((m.cell1_w + m.cell3_x) / 2) end
-    local min_slack = 2 * math.max(0, 2 * S(SEP_CLEAR) - m.cell_gap)
-    m.fits_w = m.mid_w == 0 or m.cell2_w - m.mid_w >= min_slack
 end
 
 -- Three months: a week-column graph with the letters and track beside it.
@@ -348,10 +362,10 @@ end
 -- Geometry for one row at one type size. `height` is the row height to fit
 -- into (nil for the natural size); `cfg` is normalised settings; `span`
 -- from spanFor; `texts` carries the stat strings when two stats sit beside
--- the graph (3-month and Month ranges only).
+-- the graph.
 local function layout(width, height, cfg, span, value_size, texts, probe)
     local m = { range = cfg.range or "year", typical = cfg.typical_week ~= false, span = span }
-    m.stats = m.range ~= "year" and texts ~= nil and (texts.mid_value ~= nil or texts.right_value ~= nil)
+    m.stats = texts ~= nil and (texts.mid_value ~= nil or texts.right_value ~= nil)
     m.cell_gap = S(14)
     local value_face, label_face = faces(value_size)
     m.value_size, m.value_face, m.label_face = value_size, value_face, label_face
@@ -365,6 +379,14 @@ local function layout(width, height, cfg, span, value_size, texts, probe)
     end
     m.mid_w = m.stats and stat_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
     m.right_w = m.stats and stat_w(texts.right_value, texts.right_label, texts.right_icon) or 0
+    -- One-line shape for the year's column: icon, value, a gap, caption.
+    local function line_w(value, label, icon)
+        if not (texts and value) then return 0 end
+        return (icon and icon_w or 0) + (probe(value, value_face, true)) + S(6) + (probe(label, label_face))
+    end
+    m.line_h = value_h
+    m.mid_line_w = m.stats and line_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
+    m.right_line_w = m.stats and line_w(texts.right_value, texts.right_label, texts.right_icon) or 0
     m.fits_w = true
     m.pad_x = S(6)
     m.pad_y = S(6)
@@ -394,12 +416,20 @@ function M.layout(width, height, cfg, span, probe)
     return layout(width, height, cfg, span, value_size_for(cfg), nil, probe or text_prober())
 end
 
+-- Geometry at one type size, with stats when `texts` is given (for tools and tests).
+function M.layoutAt(width, height, cfg, span, value_size, texts, probe)
+    return layout(width, height, cfg, span, value_size, texts, probe or text_prober())
+end
+
 -- With stats beside the graph, the largest type whose row fits; without
--- them the one layout there is.
+-- them the one layout there is. Beside the year graph the stats give way
+-- when even the smallest type would leave the cells under S(5): the graph
+-- then stands alone.
 function M.fitLayout(width, height, cfg, span, texts, probe)
     probe = probe or text_prober()
     local best, last
-    for size = value_size_for(cfg), MIN_VALUE_SIZE, -1 do
+    local floor_size = (cfg.range or "year") == "year" and texts and YEAR_STACK_MIN_SIZE or MIN_VALUE_SIZE
+    for size = value_size_for(cfg), floor_size, -1 do
         local m = layout(width, height, cfg, span, size, texts, probe)
         last = m
         if not m.stats then return m end
@@ -407,6 +437,9 @@ function M.fitLayout(width, height, cfg, span, texts, probe)
             if m.complete then return m end
             if not best or (m.cell or 0) > (best.cell or 0) then best = m end
         end
+    end
+    if last.range == "year" and not (best and best.cell >= S(YEAR_STAT_CELL_MIN)) then
+        return layout(width, height, cfg, span, value_size_for(cfg), nil, probe)
     end
     return best or last
 end
@@ -476,7 +509,7 @@ function M.build(ctx, cfg, activity, stats)
     end
     local extra = { period_days = period_days, period_caption = period_caption }
     local texts
-    if range ~= "year" and type(stats) == "table" then
+    if type(stats) == "table" then
         texts = {}
         for role, id in pairs({ mid = cfg.stat_left, right = cfg.stat_right }) do
             local field = M.FIELDS[id]
@@ -541,12 +574,14 @@ function M.build(ctx, cfg, activity, stats)
         return col * (cell_w + m.gap)
     end
 
-    -- One square per day, future days outlined. Today keeps its shade inset
-    -- under a dotted outline once the cells have room for it; smaller cells
-    -- keep the whole shade under a solid border that takes the gap.
+    -- One square per day, future days outlined. Today keeps its whole shade
+    -- and wears a thick black border in the gap around it, half the gap
+    -- thick with a little clearance; with the gaps closed the border sits
+    -- on the cell's edge instead.
     local function paint_days(bb, gx, gy, weeks_down)
         local step = m.cell + m.gap
-        local dotted = m.cell >= S(12)
+        local ring = math.max(1, math.floor(m.gap / 2))
+        local o = ring + math.max(0, math.floor((m.gap - ring) / 2))
         for k = 0, span.days - 1 do
             local slot = span.first_col + k
             local week, day = math.floor(slot / 7), slot % 7
@@ -556,16 +591,11 @@ function M.build(ctx, cfg, activity, stats)
             if level < 0 then
                 bb:paintBorder(x, y, w, m.cell, 1, FILL_EDGE, 0)
             elseif k == today_offset then
-                if dotted then
-                    if level > 0 then
-                        local inset = S(2)
-                        bb:paintRect(x + inset, y + inset, w - 2 * inset, m.cell - 2 * inset, FILLS[level])
-                    end
-                    paint_dotted_border(bb, x, y, w, m.cell, S(1), Blitbuffer.COLOR_BLACK)
+                paint_cell(bb, x, y, w, m.cell, level)
+                if m.gap >= 3 then
+                    bb:paintBorder(x - o, y - o, w + 2 * o, m.cell + 2 * o, ring, Blitbuffer.COLOR_BLACK, 0)
                 else
-                    paint_cell(bb, x, y, w, m.cell, level)
-                    local t = math.max(1, math.floor(m.gap / 2))
-                    bb:paintBorder(x - t, y - t, w + 2 * t, m.cell + 2 * t, t, Blitbuffer.COLOR_BLACK, 0)
+                    bb:paintBorder(x, y, w, m.cell, 1, Blitbuffer.COLOR_BLACK, 0)
                 end
             else
                 paint_cell(bb, x, y, w, m.cell, level)
@@ -624,6 +654,16 @@ function M.build(ctx, cfg, activity, stats)
         st.caption.widget:paintTo(bb, caption_x, y + st.caption_dy)
     end
 
+    -- One line: icon, bold value, then the caption sitting near its baseline.
+    local function paint_stat_line(bb, x, y, st)
+        local icon_w = st.icon and (st.icon.w + S(3)) or 0
+        if st.icon then
+            st.icon.widget:paintTo(bb, x, y + math.floor((st.value.h - st.icon.h) / 2))
+        end
+        st.value.widget:paintTo(bb, x + icon_w, y)
+        st.caption.widget:paintTo(bb, x + icon_w + st.value.w + S(6), y + math.floor((st.value.h - st.caption.h) * 0.7))
+    end
+
     local function paint_graph(bb, gx, gy)
         paint_days(bb, gx, gy, false)
         if not month_labels then return end
@@ -645,10 +685,19 @@ function M.build(ctx, cfg, activity, stats)
             paint_header(bb, ox, oy)
             paint_days(bb, ox, oy + m.header_h + S(3), true)
         else
-            paint_left(bb, ox, oy)
-            paint_graph(bb, ox + m.left_w, oy)
+            local gy = oy + (m.block_y or 0)
+            paint_left(bb, ox, gy)
+            paint_graph(bb, ox + m.left_w, gy)
         end
-        if m.stats then
+        if m.stack then
+            -- Beside the year graph the stats stack in a column at the right,
+            -- centred on the block's height, behind one dividing line.
+            local trim = S(4)
+            local sy = oy + math.floor((m.row_a_h - m.stack_h) / 2)
+            if mid then paint_stat_line(bb, ox + m.col_x, sy, mid); sy = sy + m.line_h + m.stack_gap end
+            if right then paint_stat_line(bb, ox + m.col_x, sy, right) end
+            bb:paintRect(ox + m.sep1_x - 1, oy + trim, 2, m.row_a_h - trim * 2, Blitbuffer.COLOR_DARK_GRAY)
+        elseif m.stats then
             -- Beside the graph the stats sit centred on the block's height,
             -- with dividing lines midway between neighbours.
             local stat_y = oy + math.floor((m.row_a_h - m.stat_h) / 2)

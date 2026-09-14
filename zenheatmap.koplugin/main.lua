@@ -53,7 +53,7 @@ end
 -- The numbers beside the graph come from ZenOS's own home stats, so they
 -- match its Reading stats widget; without ZenOS's module there are none.
 local function home_stats(cfg)
-    if cfg.range == "year" or (cfg.stat_left == "none" and cfg.stat_right == "none") then return nil end
+    if cfg.stat_left == "none" and cfg.stat_right == "none" then return nil end
     local ok, StatsDB = pcall(require, "common/db_stats")
     if not (ok and type(StatsDB) == "table" and type(StatsDB.queryHomeStats) == "function") then return nil end
     local ok2, stats = pcall(StatsDB.queryHomeStats, { "today_pages", "today_duration", "streak", "week_pages", "week_duration" })
@@ -217,7 +217,6 @@ function ZenHeatmap:menuItems()
         for _i, id in ipairs(stat_order) do options[#options + 1] = radio(stat_names[id], key, id) end
         return {
             text_func = function() return string.format("%s %s", text, stat_names[plugin.cfg[key]]) end,
-            enabled_func = function() return plugin.cfg.range ~= "year" end,
             sub_item_table = options,
         }
     end
@@ -238,8 +237,7 @@ function ZenHeatmap:menuItems()
         },
         {
             text = _("Stats beside the graph"),
-            help_text = _("In the 3-month and Month ranges two of ZenOS's reading stats sit beside the graph; the year graph takes the whole row."),
-            enabled_func = function() return plugin.cfg.range ~= "year" end,
+            help_text = _("Two of ZenOS's reading stats sit beside the graph. In the year range the graph gives up some width to them; on a narrow screen it keeps the row to itself."),
             sub_item_table = { stat_menu(_("Left stat:"), "stat_left"), stat_menu(_("Right stat:"), "stat_right") },
         },
         {

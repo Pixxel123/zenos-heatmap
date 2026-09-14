@@ -34,9 +34,10 @@ Decided from a design critique and a side-by-side mock on 14 September:
   upright (cell wide, 1.5 cells tall) filled from the bottom. Outline means
   "the rest, up to your best weekday", fill means "usual": the grid's own
   outline-versus-fill rule. One switch turns it off; the letters stay.
-- **Today** always has exactly one marker in the graph: a dotted S(1) border
-  over an inset shade when the cell is at least S(12), otherwise a solid
-  border half the gap thick around the whole shade.
+- **Today** always has exactly one marker in the graph: a thick black
+  border in the gap around the whole cell, half the gap thick with a little
+  clearance, at every cell size (chosen over dots, which turned to noise in
+  small cells). With the gaps closed it sits on the cell's edge.
 - **Shading**: relative to the reader's own 28-day mean (below half of it
   light, up to 1.25 times normal, above heavy), or fixed thresholds at 15 and
   60 minutes. Relative falls back to fixed when there is no history.
@@ -94,9 +95,8 @@ default.
 
 ## Stats beside the graph (added later on 14 September)
 
-The year graph is width-bound and takes the whole row. In the 3-month and
-Month ranges the graph would float in the row, so two stat slots sit beside
-it, as ZenOS's own quarter layout once had: the graph in the left cell, one
+Two stat slots sit beside the graph in every range, as ZenOS's own quarter
+layout once had: the graph in the left cell, one
 stat centred between it and a second stat flush right, dividing lines midway
 with the same clearance rule as ZenOS's stats row, the type stepping down from
 18 to 8 until the row fits. The numbers come from ZenOS's `common/db_stats`
@@ -104,6 +104,19 @@ with the same clearance rule as ZenOS's stats row, the type stepping down from
 the Reading stats widget's. The row letters take a face sized from the row
 pitch (a capital is about three quarters of the font's pixel size), capped at
 the month labels' size, so all seven always show.
+
+The year graph is width-bound, so beside it the two stats stack in one
+column at the right edge, one line each (bold value, then its caption),
+left-aligned, behind a single dividing line with the usual clearance; the
+column takes only the width it needs at the current type size and the graph
+gets the rest. One Home row is only about 136 px, where ZenOS-style
+value-over-caption stats cannot stack, hence the one-line shape and a type
+floor of 4 rather than 8 here. The type steps down until the cells are within
+S(1) of what the graph alone would get (up to S(7)) and the column is no
+taller than the graph; if even the smallest type would leave the cells under
+S(5), or the row never fits, the stats are dropped and the graph stands alone.
+Added on request so the widget can carry the numbers itself and the separate
+Reading stats row can go.
 
 ## Show on Home (added later on 14 September)
 
@@ -123,7 +136,6 @@ switch is absent when the store cannot be loaded (no ZenOS).
 
 ## Non-goals
 
-- No stat slots on the year graph; the year row is the graph alone.
 - No per-preset settings, no ZenOS settings integration beyond the hook.
 - No translations catalog in version 1 (strings are wrapped in `_()` for
   KOReader's own gettext).

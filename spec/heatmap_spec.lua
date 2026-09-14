@@ -118,8 +118,10 @@ describe("heatmap layout", function()
         -- A narrow row cannot keep the lines clear at any size; the fit ends at the floor.
         local tight = Heatmap.fitLayout(380, nil, cfg{ range = "quarter" }, Q, texts)
         assert.equals(8, tight.value_size)
-        -- The year graph never takes stats.
-        assert.is_false(Heatmap.fitLayout(1000, nil, cfg{}, YEAR, texts).stats)
+        -- The year graph takes them too, stacked in one column at the right.
+        local year = Heatmap.fitLayout(1000, nil, cfg{}, YEAR, texts)
+        assert.is_true(year.stats and year.stack)
+        assert.is_true(year.cell1_w + 24 <= year.col_x and year.col_x + year.col_w == 988)
     end)
     it("keeps the month calendar at the left when stats sit beside it", function()
         local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false }
@@ -172,15 +174,20 @@ describe("heatmap paint", function()
         for _i, r in ipairs(H.only(bb, "rect")) do assert.is_true(r[6] ~= "gray") end
         for _i, b in ipairs(H.only(bb, "border")) do assert.is_true(b[4] ~= 36) end
     end)
-    it("marks today once, solid on small cells and dotted on large ones", function()
-        local bb = paint({ range = "year", typical_week = true }, activity(371, function() return 10 end), 70)
-        local black_borders = 0
-        for _i, b in ipairs(H.only(bb, "border")) do if b[7] == "black" then black_borders = black_borders + 1 end end
-        assert.equals(1, black_borders)
-        local bb2 = paint({ range = "month", typical_week = true }, activity(371, function() return 10 end))
-        local dotted = 0
-        for _i, r in ipairs(H.only(bb2, "rect")) do if r[6] == "black" and r[4] <= 2 and r[5] <= 2 then dotted = dotted + 1 end end
-        assert.is_true(dotted > 4)
+    it("marks today with one thick border around the cell at every size", function()
+        local function marker(bb)
+            local borders, dots = {}, 0
+            for _i, b in ipairs(H.only(bb, "border")) do if b[7] == "black" then borders[#borders + 1] = b end end
+            for _i, r in ipairs(H.only(bb, "rect")) do if r[6] == "black" and (r[4] <= 2 or r[5] <= 2) then dots = dots + 1 end end
+            return borders, dots
+        end
+        local borders, dots = marker(paint({ range = "year", typical_week = true }, activity(371, function() return 10 end), 70))
+        assert.equals(1, #borders)
+        assert.equals(0, dots)
+        borders, dots = marker(paint({ range = "month", typical_week = true }, activity(371, function() return 10 end)))
+        assert.equals(1, #borders)
+        assert.equals(0, dots)
+        assert.equals(2, borders[1][6]) -- half the S(4) gap
     end)
     it("frees its text widgets and reports bounds", function()
         local bounds
@@ -215,6 +222,39 @@ describe("heatmap paint", function()
         assert.is_true(texts["49m"] and texts["read today"] and texts["34"] and texts["day streak"])
         assert.equals(2, dividers)
         assert.equals(1, icons)
+    end)
+    it("fits the stats beside the year graph and keeps the cells readable", function()
+        local span = Heatmap.spanFor("year", NOW, 2)
+        local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false, right_value = "34", right_label = "day streak", right_icon = true }
+        local m = Heatmap.fitLayout(1000, 200, { range = "year", typical_week = true }, span, texts)
+        assert.is_true(m.stats and m.stack)
+        assert.is_true(m.fits_w and m.fits_h and m.complete)
+        assert.is_true(m.cell >= 7)
+        assert.is_true(m.cell1_w + 24 <= m.col_x)
+        assert.equals(2 * m.line_h + 4, m.stack_h)
+        assert.is_true(m.stack_h <= m.row_a_h)
+        assert.is_true(m.cell1_w < m.sep1_x and m.sep1_x < m.col_x)
+        local stats = { today_duration = 49 * 60, streak = 34 }
+        local frame = Heatmap.build({ width = 1000, height = 200 },
+            { range = "year", typical_week = true, week_start = 2, now = NOW, stat_left = "today_duration", stat_right = "streak" },
+            activity(371, function() return 10 end), stats)
+        local bb = H.bb(); frame[1].paintTo(frame[1], bb, 0, 0)
+        local seen, dividers, letters = {}, 0, 0
+        for _i, c in ipairs(bb.calls) do
+            if c[1] == "text" then seen[c[4]] = true; if #c[4] == 1 then letters = letters + 1 end end
+            if c[1] == "rect" and c[6] == "dark_gray" and c[4] == 2 then dividers = dividers + 1 end
+        end
+        assert.is_true(seen["49m"] and seen["read today"] and seen["34"] and seen["day streak"])
+        assert.equals(1, dividers)
+        assert.equals(7, letters)
+    end)
+    it("lets the year graph stand alone when the stats would crush its cells", function()
+        local span = Heatmap.spanFor("year", NOW, 2)
+        local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false, right_value = "34", right_label = "day streak", right_icon = true }
+        local m = Heatmap.fitLayout(500, 200, { range = "year", typical_week = true }, span, texts)
+        assert.is_false(m.stats)
+        assert.is_true(m.cell >= 5)
+        assert.is_true(m.fits_h)
     end)
     it("formats durations and renders every field", function()
         assert.equals("0m", Heatmap.fmtTime(0))
