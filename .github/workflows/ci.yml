@@ -1,0 +1,16 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Run specs
+        run: luajit tools/spec_runner.lua
+      - name: Build the plugin zip
+        run: luajit tools/build.lua && unzip -tq dist/zenheatmap.koplugin.zip
