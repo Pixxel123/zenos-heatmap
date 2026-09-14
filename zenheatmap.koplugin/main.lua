@@ -14,7 +14,7 @@ local ZenHeatmap = WidgetContainer:extend{
 ZenHeatmap.ITEM_ID = "zenheatmap.heatmap"
 
 local RANGES = { year = true, quarter = true, month = true }
-local SIZES = { s = true, m = true, l = true }
+local SIZES = { auto = true, s = true, m = true, l = true }
 
 -- Settings with every key present and valid.
 function ZenHeatmap.normalize(cfg)
@@ -24,8 +24,15 @@ function ZenHeatmap.normalize(cfg)
         typical_week = cfg.typical_week ~= false,
         month_labels = cfg.month_labels ~= false,
         shading = cfg.shading == "absolute" and "absolute" or "relative",
-        size = SIZES[cfg.size] and cfg.size or "m",
+        size = SIZES[cfg.size] and cfg.size or "auto",
     }
+end
+
+-- Home rows the widget asks ZenOS for: the year graph is width-bound, so
+-- two rows hold it; the wider quarter cells and the calendar want three.
+function ZenHeatmap.sizeFor(cfg)
+    if cfg.size and cfg.size ~= "auto" then return cfg.size end
+    return cfg.range == "year" and "s" or "m"
 end
 
 -- The statistics plugin's week start: 1 = Sunday .. 7 = Saturday, Monday by default.
@@ -69,7 +76,7 @@ function ZenHeatmap:register()
         cfg.week_start = week_start()
         local activity = DayActivity.query(DayActivity.SERIES_DAYS)
         return Heatmap.build(ctx, cfg, activity)
-    end, { label = _("Reading heatmap"), size = self.cfg.size }) and true or false
+    end, { label = _("Reading heatmap"), size = ZenHeatmap.sizeFor(self.cfg) }) and true or false
 end
 
 function ZenHeatmap:onZenOSReady()
@@ -105,7 +112,7 @@ function ZenHeatmap:menuItems()
         }
     end
     local range_names = { year = _("Year to date"), quarter = _("3 months"), month = _("Month") }
-    local size_names = { s = _("Small"), m = _("Medium"), l = _("Large") }
+    local size_names = { auto = _("Automatic"), s = _("Small"), m = _("Medium"), l = _("Large") }
     local items = {
         {
             text_func = function() return string.format("%s %s", _("Range:"), range_names[plugin.cfg.range]) end,
@@ -122,8 +129,8 @@ function ZenHeatmap:menuItems()
         },
         {
             text_func = function() return string.format("%s %s", _("Height:"), size_names[plugin.cfg.size]) end,
-            help_text = _("Rows of the ZenOS Home grid the widget takes: small is two, medium three, large four."),
-            sub_item_table = { radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
+            help_text = _("Rows of the ZenOS Home grid the widget takes: small is two, medium three, large four. Automatic is two for the year and three for the 3-month and Month ranges."),
+            sub_item_table = { radio(_("Automatic"), "size", "auto"), radio(_("Small"), "size", "s"), radio(_("Medium"), "size", "m"), radio(_("Large"), "size", "l") },
         },
     }
     if not hook("REGISTER_HOME_ITEM") then

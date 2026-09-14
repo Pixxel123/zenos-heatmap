@@ -150,6 +150,15 @@ local function text_prober()
     end
 end
 
+-- A face for the row letters that fits between rows: a capital is about
+-- three quarters of the font's pixel size, and Font:getFace scales the
+-- size it is given by the screen's DPI. Capped at the month labels' size.
+local ROW_FACE_MAX = 13
+local function row_face_for(pitch)
+    local size = math.floor((pitch - S(2)) / (0.75 * S(1)))
+    return Font:getFace("smallinfofont", math.max(6, math.min(ROW_FACE_MAX, size)))
+end
+
 -- The typical week's track beside a graph: three cells wide, within limits.
 local TRACK_MAX = 36
 local function track_width(m, cell, gap)
@@ -200,6 +209,7 @@ local function layout_year(m, cfg, avail_h)
         m.grid_w = graph_w
     end
     m.track_w = track_width(m, m.cell, m.gap)
+    m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
     m.content_h = m.pad_y + m.grid_h + (m.labels and labels_h or 0)
 end
@@ -230,6 +240,7 @@ local function layout_quarter(m, cfg, avail_h)
     m.grid_w, m.grid_h = grid_size(m.cell_w, m.gap, cols, 7)
     m.grid_h = m.cell * 7 + m.gap * 6
     m.track_w = track_width(m, m.cell_w, m.gap)
+    m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
 end
 
@@ -337,7 +348,7 @@ function M.build(ctx, cfg, activity)
     local row_labels, day_labels = {}, {}
     for col = 0, 6 do
         local letter = WEEKDAY_LETTERS[((start - 1 + col) % 7) + 1]
-        row_labels[col] = text(letter, m.month_face)
+        row_labels[col] = text(letter, m.row_face or m.month_face)
         day_labels[col] = text(letter, m.letter_face)
     end
     local month_labels
@@ -393,8 +404,8 @@ function M.build(ctx, cfg, activity)
         end
     end
 
-    -- Letters down the rows, the typical week's track filled from the left,
-    -- and a hairline before the graph.
+    -- Letters down the rows in a face sized to fit them, the typical week's
+    -- track filled from the left, and a hairline before the graph.
     local function paint_left(bb, ox, gy)
         local step = m.cell + m.gap
         local tx = ox + m.letter_w + S(5)
