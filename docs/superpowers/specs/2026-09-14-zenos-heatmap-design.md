@@ -22,10 +22,15 @@ Decided from a design critique and a side-by-side mock on 14 September:
   normal, black heavy. No circles, arcs, dots or anti-aliased strokes; nothing
   thinner than 1 px, no dashes shorter than S(1).
 - **Ranges.** Year to date (week columns, 53 wide), 3 months (week columns,
-  cells may widen up to 2:1), Month (a calendar, weeks down). No "week only".
+  cells may widen up to 2:1, the graph centred when no stats sit beside it),
+  Month (a calendar, weeks down). No "week only". The 3-month and Month
+  blocks shrink into any row down to XS (cells as small as S(4), the gaps
+  closing last); the year graph is width-bound, and with room to spare it
+  centres itself in its row and holds it (ZenOS may not slide it).
 - **Weekday letters** label the graph's rows (year, 3 months) at the left in
   the month labels' face, and head the calendar's columns (Month) in the
-  caption face. They are always shown.
+  caption face, following the column pitch when a short row cannot hold
+  the caption face over full cells. They are always shown.
 - **Typical week**: each weekday's mean minutes over the last 12 weeks, as a
   share of the best weekday (0 to 1). Beside the row graphs it is an outlined
   track three cells wide (capped at S(36)) filled from the left, one per row,
@@ -43,8 +48,9 @@ Decided from a design critique and a side-by-side mock on 14 September:
   60 minutes. Relative falls back to fixed when there is no history.
 - **Month labels** under the row graphs, one at each month's first column,
   skipped when they would collide. Toggle. When on they always stay: in a
-  short year row their face follows the row pitch like the weekday letters,
-  and only when even S(4) cells with the smallest face overflow do they go.
+  short year or 3-month row their face follows the row pitch like the
+  weekday letters, and only when even S(4) cells with the smallest face
+  overflow do they go.
 - **Empty cells are outlined, not filled white**, so a library background
   image shows through.
 
@@ -61,7 +67,7 @@ as a plugin menu for Launcher and Controls buttons):
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None (3 months and Month) | Time today, Day streak |
+| Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read (days with reading in the range, captioned "days read"), None (3 months and Month) | Time today, Day streak |
 | Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (1 for year, 2 otherwise) |
 
 Changing a setting saves and re-registers the item, which makes ZenOS rebuild

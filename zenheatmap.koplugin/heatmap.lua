@@ -55,7 +55,7 @@ end
 -- series. `icon` marks the streak, which carries the flame.
 M.FIELDS = {
     streak = { icon = true, value = function(s) return tostring(s.streak or 0) end, caption = function() return _("day streak") end },
-    period_days = { value = function(_s, x) return tostring(x.period_days or 0) end, caption = function(_s, x) return x.period_caption end },
+    period_days = { value = function(_s, x) return tostring(x.period_days or 0) end, caption = function() return _("days read") end },
     today_pages = { value = function(s) return tostring(s.today_pages or 0) end, caption = function() return _("pages today") end },
     today_duration = { value = function(s) return fmt_time(s.today_duration or 0) end, caption = function() return _("read today") end },
     week_pages = { value = function(s) return tostring(s.week_pages or 0) end, caption = function() return _("pages this week") end },
@@ -189,12 +189,16 @@ end
 
 -- A face for the row letters that fits between rows: a capital is about
 -- three quarters of the font's pixel size, and Font:getFace scales the
--- size it is given by the screen's DPI. Capped at the month labels' size.
+-- size it is given by the screen's DPI. Capped at the month labels' size
+-- unless a cap is given.
 local ROW_FACE_MAX = 13
-local function row_face_for(pitch)
+local function row_face_for(pitch, cap)
     local size = math.floor((pitch - S(2)) / (0.75 * S(1)))
-    return Font:getFace("smallinfofont", math.max(6, math.min(ROW_FACE_MAX, size)))
+    return Font:getFace("smallinfofont", math.max(6, math.min(cap or ROW_FACE_MAX, size)))
 end
+
+-- The calendar's column letters take the caption face.
+local LETTER_FACE_SIZE = S(11)
 
 -- The typical week's track beside a graph: three cells wide, within limits.
 local TRACK_MAX = 36
@@ -224,12 +228,42 @@ local function place_row_a(m, row_w)
     m.fits_w = m.mid_w == 0 or m.cell2_w - m.mid_w >= min_slack
 end
 
+-- A face that shrinks with the cells: `face_for` names the face for a
+-- pitch, `by_h(text_h)` the cell the row allows beside text that tall.
+-- Two passes settle a face sized for the cells that fit under it.
+local function fit_face(m, gap, face_for, by_h)
+    local cell = by_h(0)
+    local face, h
+    for _pass = 1, 2 do
+        face = face_for(math.max(S(4), cell) + gap)
+        h = select(2, m.probe("W", face))
+        cell = by_h(h)
+    end
+    return face, h
+end
+
+-- Height of the month labels under a row graph, 0 with them off. They
+-- stay whenever they are wanted: in the month face while it costs the
+-- cells nothing, else in a face that follows the row pitch like the
+-- weekday letters, so labels and cells shrink together.
+local function month_labels_h(m, cfg, cell_max, gap, by_h)
+    m.labels = cfg.month_labels ~= false
+    if not m.labels then return 0 end
+    local labels_h = S(3) + m.month_label_h
+    if by_h(labels_h) < cell_max then
+        local face, h = fit_face(m, gap, row_face_for, function(lh) return by_h(S(3) + lh) end)
+        m.month_face, labels_h = face, S(3) + h
+    end
+    return labels_h
+end
+
 -- Year to date: a week-column graph of the whole year with the letters and
 -- track down its left side. The grid grows into spare room; a short row
--- shrinks the cells under the month labels as far as S(6), drops the
+-- shrinks the cells under the month labels as far as S(3), drops the
 -- labels only when the cells would have to go below that, then shrinks
 -- the cells to S(4) and closes the gaps. The graph keeps the row to
--- itself: no stats sit beside or over it.
+-- itself: no stats sit beside or over it. Width-bound with room to
+-- spare, the block centres itself in the row.
 local function layout_year(m, cfg, avail_h)
     local cols = m.span.weeks
     local labels_wanted = cfg.month_labels ~= false
@@ -241,23 +275,7 @@ local function layout_year(m, cfg, avail_h)
     local function by_h(labels_h)
         return math.floor((avail_h - labels_h - 6 * m.gap) / 7)
     end
-    -- Month labels stay whenever they are wanted. They take the month face
-    -- while it costs the cells nothing; in a shorter row their face follows
-    -- the row pitch like the weekday letters, so labels and cells shrink
-    -- together.
-    local labels_h = 0
-    m.labels = labels_wanted
-    if labels_wanted then
-        labels_h = S(3) + m.month_label_h
-        if by_h(labels_h) < cell_max then
-            local cell = by_h(0)
-            for _pass = 1, 2 do
-                local face = row_face_for(math.max(S(4), cell) + m.gap)
-                m.month_face, labels_h = face, S(3) + select(2, m.probe("W", face))
-                cell = by_h(labels_h)
-            end
-        end
-    end
+    local labels_h = month_labels_h(m, cfg, cell_max, m.gap, by_h)
     local function solve(lh, floor)
         m.gap = S(2)
         local room = by_h(lh)
@@ -283,27 +301,33 @@ local function layout_year(m, cfg, avail_h)
     m.grid_h = m.cell * 7 + m.gap * 6
     -- Integer cells leave up to a column's worth of slack on the right; the
     -- columns spread across the graph's width instead.
-    if m.cell >= S(6) and m.grid_w < graph_w and graph_w - m.grid_w <= cols * S(2) then
+    if m.cell_w >= S(6) and m.grid_w < graph_w and graph_w - m.grid_w <= cols * S(2) then
         m.col_span = graph_w - m.cell_w
         m.grid_w = graph_w
     end
     m.track_w = track_width(m, m.cell, m.gap)
     m.row_face = row_face_for(m.cell + m.gap)
     m.block_x = 0
-    local block_h = m.grid_h + (m.labels and labels_h or 0)
+    local block_h = m.grid_h + labels_h
     m.content_h = m.pad_y + block_h
     m.complete = m.cell >= cell_max and (m.labels or not labels_wanted)
+    if m.complete and avail_h < math.huge then
+        m.block_y = math.max(0, math.floor((avail_h - m.pad_y - block_h) / 2))
+    end
 end
 
 -- Quarter and month: cells shrink from `cell_max` to `cell_min` until the
--- block fits `avail_h`; the gaps close as a last resort.
+-- block fits `avail_h`; the gaps close as a last resort, to S(2) and
+-- then S(1) as the year graph's do.
 local function fit_block(m, avail_h, cell_max, cell_min, left_h)
     local function block_h(cell, gap)
         return math.max(left_h(cell, gap), m.stats and m.stat_h or 0)
     end
     local cell, gap = cell_max, S(4)
     while cell > cell_min and block_h(cell, gap) > avail_h do cell = cell - 1 end
-    if block_h(cell, gap) > avail_h then gap = S(2) end
+    for _i, closed in ipairs({ S(2), S(1) }) do
+        if block_h(cell, gap) > avail_h then gap = closed end
+    end
     m.cell, m.gap = cell, gap
     m.row_a_h = block_h(cell, gap)
     m.content_h = m.pad_y + m.row_a_h
@@ -311,38 +335,60 @@ local function fit_block(m, avail_h, cell_max, cell_min, left_h)
 end
 
 -- Three months: a week-column graph with the letters and track beside it.
+-- The month labels shrink with the cells as in the year graph and go only
+-- when even S(4) cells overflow. Without stats the graph is centred.
 local function layout_quarter(m, cfg, avail_h)
     local cols = m.span.weeks
-    m.labels = cfg.month_labels ~= false
-    local labels_h = m.labels and (S(3) + m.month_label_h) or 0
     m.left_w = left_block_w(m)
     local room_w = (m.stats and m.inner_w * 0.5 or m.inner_w) - m.left_w
     local by_w = math.floor((room_w - (cols - 1) * S(4)) / cols)
-    fit_block(m, avail_h, math.max(S(8), math.min(S(32), by_w)), S(8), function(cell, gap)
-        return cell * 7 + gap * 6 + labels_h
+    local cell_max = math.max(S(8), math.min(S(32), by_w))
+    local labels_h = month_labels_h(m, cfg, cell_max, S(4), function(lh)
+        return math.floor((avail_h - lh - 6 * S(4)) / 7)
     end)
-    m.cell_w = math.max(m.cell, math.min(m.cell * 2, math.max(S(8), math.min(S(32), by_w))))
+    local function graph_h(cell, gap) return cell * 7 + gap * 6 + labels_h end
+    fit_block(m, avail_h, cell_max, S(4), graph_h)
+    if m.labels and graph_h(m.cell, m.gap) > avail_h then
+        m.labels, labels_h = false, 0
+        fit_block(m, avail_h, cell_max, S(4), graph_h)
+    end
+    m.cell_w = math.max(m.cell, math.min(m.cell * 2, cell_max))
     m.grid_w, m.grid_h = grid_size(m.cell_w, m.gap, cols, 7)
     m.grid_h = m.cell * 7 + m.gap * 6
     m.track_w = track_width(m, m.cell_w, m.gap)
     m.row_face = row_face_for(m.cell + m.gap)
-    m.block_x = 0
     m.cell1_w = m.left_w + m.grid_w
-    if m.stats then place_row_a(m, m.inner_w) end
+    if m.stats then
+        m.block_x = 0
+        place_row_a(m, m.inner_w)
+    else
+        m.block_x = math.floor((m.inner_w - m.cell1_w) / 2)
+    end
 end
 
 -- Month: the weekday letters over the calendar and, with the typical week
--- on, an upright track under each letter. The calendar is centred.
+-- on, an upright track under each letter. The calendar is centred. In a
+-- short row the cells shrink as far as S(4), the tracks with them, and
+-- the letters keep the caption face while it costs the cells nothing,
+-- else follow the column pitch like the row letters.
 local function layout_month(m, cfg, avail_h)
     local rows = m.span.weeks
     local by_w = math.floor((m.inner_w / 3 - 6 * S(4)) / 7)
-    local function track_h(cell) return m.typical and math.floor(cell * 1.5) or 0 end
+    local cell_max = math.max(S(14), math.min(S(32), by_w))
+    local track_rows = m.typical and 1.5 or 0
+    local function track_h(cell) return math.floor(cell * track_rows) end
     local function header_h(cell)
         return m.label_h + S(3) + (m.typical and (track_h(cell) + S(4)) or 0)
     end
-    fit_block(m, avail_h, math.max(S(14), math.min(S(32), by_w)), S(14), function(cell, gap)
+    local function calendar_h(cell, gap)
         return header_h(cell) + S(3) + cell * rows + gap * (rows - 1)
-    end)
+    end
+    if calendar_h(cell_max, S(4)) > avail_h then
+        local fixed = 2 * S(3) + (m.typical and S(4) or 0) + S(4) * (rows - 1)
+        m.letter_face, m.label_h = fit_face(m, S(4), function(pitch) return row_face_for(pitch, LETTER_FACE_SIZE) end,
+            function(lh) return math.floor((avail_h - lh - fixed) / (rows + track_rows)) end)
+    end
+    fit_block(m, avail_h, cell_max, S(4), calendar_h)
     m.header_h = header_h(m.cell)
     m.track_h = track_h(m.cell)
     m.grid_w, m.grid_h = grid_size(m.cell, m.gap, 7, rows)
@@ -377,13 +423,14 @@ local function layout(width, height, cfg, span, value_size, texts, probe)
     m.mid_w = m.stats and stat_w(texts.mid_value, texts.mid_label, texts.mid_icon) or 0
     m.right_w = m.stats and stat_w(texts.right_value, texts.right_label, texts.right_icon) or 0
     m.fits_w = true
+    m.block_y = 0
     m.pad_x = S(6)
     m.pad_y = S(6)
     m.inner_w = math.max(1, width - m.pad_x * 2)
     -- The month labels and the row letters share a small face; the
     -- calendar's column letters take the caption face.
     m.month_face = Font:getFace("smallinfofont", S(7))
-    m.letter_face = Font:getFace("smallinfofont", S(11))
+    m.letter_face = Font:getFace("smallinfofont", LETTER_FACE_SIZE)
     m.probe = probe
     m.month_label_h = select(2, probe("W", m.month_face))
     m.label_h = select(2, probe("A", m.letter_face))
@@ -482,20 +529,12 @@ function M.build(ctx, cfg, activity, stats)
         end
     end
 
-    -- The window's days read and its caption, for a "days read" stat.
+    -- The window's days read, for the "days read" stat.
     local period_days = 0
     for _i, d in ipairs(days) do
         if (d.minutes or 0) > 0 and d.date and d.date >= span.start_date then period_days = period_days + 1 end
     end
-    local period_caption
-    if range == "quarter" then
-        period_caption = string.format(_("days since %s"), "1 " .. os.date("%b", span.start_ts))
-    elseif range == "month" then
-        period_caption = string.format(_("days in %s"), os.date("%b", span.start_ts))
-    else
-        period_caption = string.format(_("days in %s"), tostring(now.year))
-    end
-    local extra = { period_days = period_days, period_caption = period_caption }
+    local extra = { period_days = period_days }
     local texts
     if type(stats) == "table" and range ~= "year" then
         texts = {}
@@ -551,8 +590,11 @@ function M.build(ctx, cfg, activity, stats)
         end
     end
 
-    -- A graph on its own is centred in the row.
-    local top = math.max(0, math.floor((height - m.content_h) / 2))
+    -- A graph on its own is centred in the row. A block that has centred
+    -- itself (block_y) holds its row, as ZenOS's quote widget does; any
+    -- other slack is ZenOS's to slide, evening out the gaps between rows.
+    local held = m.block_y > 0
+    local top = held and 0 or math.max(0, math.floor((height - m.content_h) / 2))
     local shift = { value = 0 }
     local cell_w = m.cell_w or m.cell
     local function col_x(col)
@@ -658,7 +700,7 @@ function M.build(ctx, cfg, activity, stats)
 
     local content = managed(Geom:new{ w = width, h = height }, resources, function(_self, bb, x, y)
         local ox = x + m.pad_x + m.block_x
-        local oy = y + top + m.pad_y + shift.value
+        local oy = y + top + m.pad_y + m.block_y + shift.value
         if m.range == "month" then
             paint_header(bb, ox, oy)
             paint_days(bb, ox, oy + m.header_h + S(3), true)
@@ -684,9 +726,11 @@ function M.build(ctx, cfg, activity, stats)
 
     if type(ctx.setContentBounds) == "function" then
         ctx.setContentBounds{
-            top = top, bottom = top + m.content_h,
-            min_shift = -top, max_shift = math.max(0, height - (top + m.content_h)),
-            set_shift = function(v) shift.value = v end,
+            top = top, bottom = held and height or top + m.content_h,
+            min_shift = held and 0 or -top,
+            max_shift = held and 0 or math.max(0, height - (top + m.content_h)),
+            lock_shift = held or nil,
+            set_shift = function(v) shift.value = held and 0 or v end,
         }
     end
 
