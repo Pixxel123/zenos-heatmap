@@ -97,11 +97,26 @@ describe("heatmap layout", function()
         local q = Heatmap.layout(1000, nil, cfg{ range = "quarter" }, Q)
         assert.is_true(q.cell_w >= q.cell and q.cell_w <= 2 * q.cell)
         local mo = Heatmap.layout(1000, nil, cfg{ range = "month" }, MONTH)
-        assert.equals(12 + 3 + math.floor(mo.cell * 1.5) + 4, mo.header_h)
+        assert.equals(12 + 3 + math.floor(mo.cell * 1.5) + 13, mo.header_h)
         assert.equals(math.floor(mo.cell * 1.5), mo.track_h)
         local off = Heatmap.layout(1000, nil, cfg{ range = "month", typical_week = false }, MONTH)
         assert.equals(12 + 3, off.header_h)
         assert.equals(math.floor((988 - mo.grid_w) / 2), mo.block_x)
+    end)
+    it("reserves a gap, a hairline and a gap under the month tracks, only with the typical week on", function()
+        local on = Heatmap.layout(1000, nil, cfg{ range = "month" }, MONTH)
+        local off = Heatmap.layout(1000, nil, cfg{ range = "month", typical_week = false }, MONTH)
+        assert.is_true(on.header_h - off.header_h >= on.track_h + 13)
+        assert.equals(on.label_h + 3, off.header_h)
+        -- A short row pays for the taller header out of the cells, not the calendar's gap.
+        local short = Heatmap.layout(1000, 120, cfg{ range = "month" }, MONTH)
+        assert.is_true(short.content_h <= 120)
+        assert.is_true(short.header_h - Heatmap.layout(1000, 120, cfg{ range = "month", typical_week = false }, MONTH).header_h >= short.track_h + 13)
+        -- In a row too short even for S(4) cells the gaps around the hairline close with the calendar's.
+        local tight = Heatmap.layout(1000, 60, cfg{ range = "month" }, MONTH)
+        assert.is_true(tight.complete)
+        assert.equals(1, tight.gap)
+        assert.equals(tight.label_h + 3 + tight.track_h + 1 + 1 + 1, tight.header_h)
     end)
     it("sizes the row letters to the row pitch, capped at the month labels' size", function()
         -- pitch 16 (cells of 14, gaps of 2) allows 18, capped at 13; pitch 9 allows 9
@@ -208,6 +223,22 @@ describe("heatmap paint", function()
         local bb = paint({ range = "year", typical_week = false }, activity(371, function() return 0 end))
         for _i, r in ipairs(H.only(bb, "rect")) do assert.is_true(r[6] ~= "gray") end
         for _i, b in ipairs(H.only(bb, "border")) do assert.is_true(b[4] ~= 36) end
+    end)
+    it("draws one hairline under the month tracks across the calendar, none with the typical week off", function()
+        local bb = paint({ range = "month", typical_week = true }, activity(371, function() return 0 end))
+        local m = Heatmap.layout(1000, 300, { range = "month", typical_week = true }, Heatmap.spanFor("month", NOW, 2))
+        local lines = {}
+        -- max(1, S(1) - 1) thick: 1 px at spec scale.
+        for _i, r in ipairs(H.only(bb, "rect")) do if r[6] == "gray" and r[5] == 1 then lines[#lines + 1] = r end end
+        assert.equals(1, #lines)
+        assert.equals(m.grid_w, lines[1][4])
+        -- From the letters: S(3), the tracks and an S(6) gap (the calendar's gaps are open); the calendar follows S(7) + S(3) later.
+        local letters_y
+        for _i, c in ipairs(bb.calls) do if c[1] == "text" and #c[4] == 1 then letters_y = letters_y or c[3] end end
+        assert.equals(letters_y + m.label_h + 3 + m.track_h + 6, lines[1][3])
+        assert.equals(lines[1][3] + 1 + 6 + 3, letters_y + m.header_h + 3)
+        bb = paint({ range = "month", typical_week = false }, activity(371, function() return 0 end))
+        for _i, r in ipairs(H.only(bb, "rect")) do assert.is_true(r[6] ~= "gray" or r[5] ~= 1) end
     end)
     it("marks today with one thick border around the cell at every size", function()
         local function marker(bb)

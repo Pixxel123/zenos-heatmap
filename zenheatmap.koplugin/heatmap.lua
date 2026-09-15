@@ -367,7 +367,8 @@ local function layout_quarter(m, cfg, avail_h)
 end
 
 -- Month: the weekday letters over the calendar and, with the typical week
--- on, an upright track under each letter. The calendar is centred. In a
+-- on, an upright track under each letter and a hairline under the tracks,
+-- as beside the row graphs. The calendar is centred. In a
 -- short row the cells shrink as far as S(4), the tracks with them, and
 -- the letters keep the caption face while it costs the cells nothing,
 -- else follow the column pitch like the row letters.
@@ -377,20 +378,25 @@ local function layout_month(m, cfg, avail_h)
     local cell_max = math.max(S(14), math.min(S(32), by_w))
     local track_rows = m.typical and 1.5 or 0
     local function track_h(cell) return math.floor(cell * track_rows) end
-    local function header_h(cell)
-        return m.label_h + S(3) + (m.typical and (track_h(cell) + S(4)) or 0)
+    -- Under the tracks: a gap, the hairline and a gap, S(6) each as in
+    -- left_block_w; the gaps close with the calendar's as a last resort.
+    local function line_gap(gap) return gap >= S(4) and S(6) or gap end
+    local function track_tail(gap) return m.typical and (2 * line_gap(gap) + S(1)) or 0 end
+    local function header_h(cell, gap)
+        return m.label_h + S(3) + track_h(cell) + track_tail(gap)
     end
     local function calendar_h(cell, gap)
-        return header_h(cell) + S(3) + cell * rows + gap * (rows - 1)
+        return header_h(cell, gap) + S(3) + cell * rows + gap * (rows - 1)
     end
     if calendar_h(cell_max, S(4)) > avail_h then
-        local fixed = 2 * S(3) + (m.typical and S(4) or 0) + S(4) * (rows - 1)
+        local fixed = 2 * S(3) + track_tail(S(4)) + S(4) * (rows - 1)
         m.letter_face, m.label_h = fit_face(m, S(4), function(pitch) return row_face_for(pitch, LETTER_FACE_SIZE) end,
             function(lh) return math.floor((avail_h - lh - fixed) / (rows + track_rows)) end)
     end
     fit_block(m, avail_h, cell_max, S(4), calendar_h)
-    m.header_h = header_h(m.cell)
+    m.header_h = header_h(m.cell, m.gap)
     m.track_h = track_h(m.cell)
+    m.line_gap = line_gap(m.gap)
     m.grid_w, m.grid_h = grid_size(m.cell, m.gap, 7, rows)
     m.left_w, m.track_w = 0, 0
     m.cell1_w = m.grid_w
@@ -655,19 +661,24 @@ function M.build(ctx, cfg, activity, stats)
     end
 
     -- Month header: letters centred on each column and, with the typical
-    -- week on, an upright track under each, filled from the bottom.
+    -- week on, an upright track under each, filled from the bottom, then a
+    -- hairline across the calendar's width a gap below the tracks, a touch
+    -- thinner than the vertical one beside the row graphs.
     local function paint_header(bb, ox, y)
         local step = m.cell + m.gap
+        local ty = y + m.label_h + S(3)
         for col = 0, 6 do
             local x = ox + col * step
             local lbl = day_labels[col]
             lbl.widget:paintTo(bb, x + math.floor((m.cell - lbl.w) / 2), y)
             if m.typical then
-                local ty = y + m.label_h + S(3)
                 bb:paintBorder(x, ty, m.cell, m.track_h, 1, FILL_EDGE, 0)
                 local fill = math.floor(m.track_h * shares[col] + 0.5)
                 if fill > 0 then bb:paintRect(x, ty + m.track_h - fill, m.cell, fill, track_fill[col]) end
             end
+        end
+        if m.typical then
+            bb:paintRect(ox, ty + m.track_h + m.line_gap, m.grid_w, math.max(1, S(1) - 1), FILL_LIGHT)
         end
     end
 

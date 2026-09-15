@@ -36,7 +36,10 @@ Decided from a design critique and a side-by-side mock on 14 September:
   track three cells wide (capped at S(36)) filled from the left, one per row,
   in the shade the weekday's average earns in the grid (light, normal, heavy), with a 1 px `COLOR_GRAY` hairline between the
   block and the graph. Under the Month header it is the same track standing
-  upright (cell wide, 1.5 cells tall) filled from the bottom. Outline means
+  upright (cell wide, 1.5 cells tall) filled from the bottom, with the same
+  hairline under the tracks across the calendar's width, S(6) clear on both
+  sides and a touch thinner (`max(1, S(1) - 1)`), its gaps closing with the
+  calendar's in a row too short for them. Outline means
   "the rest, up to your best weekday", fill means "usual": the grid's own
   outline-versus-fill rule. One switch turns it off; the letters stay.
 - **Today** always has exactly one marker in the graph: a thick black
