@@ -177,6 +177,28 @@ describe("plugin entry", function()
         first.callback()
         assert.is_false(first.checked_func())
     end)
+    it("makes ZenOS's registry count the item as 0 units, once, and keeps its size label", function()
+        local calls = 0
+        local Registry = {
+            sizeClass = function(c) return type(c.size) == "string" and c.size or nil end,
+            baseSizeUnits = function(c) return c.size == "xs" and 1 or 2 end,
+            sizeUnits = function(c, mcfg) calls = calls + 1; return (c.size == "xs" and 1 or 2) * ((mcfg and mcfg.two_rows) and 2 or 1) end,
+            sizeLabel = function(c) return "stock" end,
+        }
+        package.loaded["modules/filebrowser/patches/home/components/registry"] = Registry
+        local ZenHeatmap = require("main")
+        plugin()
+        assert.is_true(Registry.__zenheatmap_shield)
+        assert.equals(0, Registry.sizeUnits({ id = "zenheatmap.heatmap", size = "xs" }))
+        assert.equals(5, Registry.sizeUnits({ id = "strip", size = { units = 2.5 } }, { two_rows = true }) + 1)
+        assert.equals("XS", Registry.sizeLabel({ id = "zenheatmap.heatmap", size = "xs" }))
+        assert.equals("stock", Registry.sizeLabel({ id = "strip" }))
+        local wrapped = Registry.sizeUnits
+        assert.is_true(ZenHeatmap.shieldBudget())
+        assert.equals(wrapped, Registry.sizeUnits)
+        package.loaded["modules/filebrowser/patches/home/components/registry"] = nil
+        assert.is_false(ZenHeatmap.shieldBudget())
+    end)
     it("registers again on ZenOSReady", function()
         registered = nil
         local p = plugin()

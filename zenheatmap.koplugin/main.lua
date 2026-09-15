@@ -195,11 +195,44 @@ function ZenHeatmap:setHomeEnabled(on)
     return true
 end
 
+-- ZenOS's Widgets list refuses a widget once the units it counts pass
+-- Home's budget, though Home itself lays out an over-full page by
+-- shrinking what can shrink. So this item asks ZenOS's registry to count
+-- it as 0 units in that sum: it never blocks another widget, or itself,
+-- from being switched on there, and Home still gives it its row, since
+-- the layout works from the registered size class. Nothing in ZenOS is
+-- changed on disk; should the registry ever look different, this does
+-- nothing and the list behaves as stock.
+function ZenHeatmap.shieldBudget()
+    local ok, Registry = pcall(require, "modules/filebrowser/patches/home/components/registry")
+    if not (ok and type(Registry) == "table") then return false end
+    if Registry.__zenheatmap_shield then return true end
+    if type(Registry.sizeUnits) ~= "function" or type(Registry.baseSizeUnits) ~= "function" then return false end
+    local size_units, size_label = Registry.sizeUnits, Registry.sizeLabel
+    local function ours(component) return type(component) == "table" and component.id == ZenHeatmap.ITEM_ID end
+    Registry.sizeUnits = function(component, module_cfg)
+        if ours(component) then return 0 end
+        return size_units(component, module_cfg)
+    end
+    if type(size_label) == "function" then
+        Registry.sizeLabel = function(component, module_cfg)
+            if ours(component) then
+                local class = type(Registry.sizeClass) == "function" and Registry.sizeClass(component)
+                return class and class:upper() or tostring(Registry.baseSizeUnits(component))
+            end
+            return size_label(component, module_cfg)
+        end
+    end
+    Registry.__zenheatmap_shield = true
+    return true
+end
+
 -- Register (or re-register) the Home item. Re-registering replaces the
 -- builder and options and makes ZenOS rebuild Home.
 function ZenHeatmap:register()
     local register = hook("REGISTER_HOME_ITEM")
     if not register then return false end
+    ZenHeatmap.shieldBudget()
     local plugin = self
     return register(ZenHeatmap.ITEM_ID, function(ctx)
         local cfg = ZenHeatmap.normalize(plugin.cfg)
@@ -293,7 +326,7 @@ function ZenHeatmap:menuItems()
     if ZenHeatmap.homeEnabled() ~= nil then
         table.insert(items, 1, {
             text = _("Show on Home"),
-            help_text = _("Puts the widget on the ZenOS Home page, even when Home is already full: ZenOS then shrinks the other widgets a little to make room. Move it in Home's edit mode or under Zen Settings > Home > Widgets."),
+            help_text = _("Puts the widget on the ZenOS Home page. It does not count against Home's size budget: when Home is full, ZenOS shrinks the other widgets a little to make room. Move it in Home's edit mode or under Zen Settings > Home > Widgets."),
             checked_func = function() return ZenHeatmap.homeEnabled() == true end,
             callback = function() plugin:setHomeEnabled(ZenHeatmap.homeEnabled() ~= true) end,
             separator = true,

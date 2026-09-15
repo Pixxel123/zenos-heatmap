@@ -18,10 +18,11 @@ Home is back to stock.
    in the KOReader menu, then move it in Home's edit mode or under
    **Zen Settings > Home > Widgets**.
 
-**Show on Home** works even when Home is already full and the Widgets list
-says "Not enough Home space": ZenOS then shrinks the other widgets a little
-to make room. Turning the widget on from the Widgets list instead needs a
-free row.
+The heatmap does not count against Home's size budget: ZenOS's Widgets list
+lets you switch it, and anything else, on even when Home is full, and Home
+then shrinks the other widgets a little to make room. The plugin arranges
+this at load by asking ZenOS's registry to count its own item as 0 units;
+nothing in ZenOS is changed on disk.
 
 ## Settings
 

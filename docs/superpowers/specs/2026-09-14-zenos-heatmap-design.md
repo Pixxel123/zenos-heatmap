@@ -122,6 +122,18 @@ default on) and one when it is off. If the row never fits, the graph stands
 alone. Asked for so the widget can replace the Reading stats row and the
 year graph keeps a row to itself.
 
+## Not counting against Home's budget (added 15 September)
+
+ZenOS's Widgets list sums `Registry.sizeUnits` over the enabled widgets and
+refuses a toggle past the capacity, while Home's `Registry.layoutUnits`
+works from `baseSizeUnits` and shrinks what can shrink. At registration the
+plugin wraps `Registry.sizeUnits` (and `sizeLabel`, so the list still says
+"XS") on the live module table to return 0 for its own item, once, guarded
+so a differently shaped registry leaves ZenOS stock. Home's `resolve_rows`
+then carries `_home_units = 0` for the item, and `layoutUnits` takes
+`max(base, 0) = base`, so the row is laid out as before. Chosen over asking
+ZenOS for a change, at the user's request.
+
 ## Show on Home (added later on 14 September)
 
 ZenOS's Widgets list refuses to switch a widget on when Home would go past
