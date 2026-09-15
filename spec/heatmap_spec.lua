@@ -121,11 +121,8 @@ describe("heatmap layout", function()
         -- A narrow row cannot keep the lines clear at any size; the fit ends at the floor.
         local tight = Heatmap.fitLayout(380, nil, cfg{ range = "quarter" }, Q, texts)
         assert.equals(8, tight.value_size)
-        -- The year graph takes ZenOS's row above it instead.
-        local year = Heatmap.fitLayout(1000, nil, cfg{}, YEAR, { row = { { value = "42", label = "pages today" }, { value = "49m", label = "read today" }, { value = "34", label = "day streak", icon = true } } })
-        assert.is_true(year.stats and year.above)
-        assert.equals(3, year.above_n)
-        assert.equals(year.stat_h + 10, year.block_y)
+        -- The year graph never takes stats.
+        assert.is_false(Heatmap.fitLayout(1000, nil, cfg{}, YEAR, texts).stats)
     end)
     it("keeps the month calendar at the left when stats sit beside it", function()
         local texts = { mid_value = "49m", mid_label = "read today", mid_icon = false }
@@ -227,10 +224,10 @@ describe("heatmap paint", function()
         assert.equals(2, dividers)
         assert.equals(1, icons)
     end)
-    it("puts ZenOS's three stats in a row over the year graph, with month labels kept", function()
+    it("paints the year graph alone, with month labels, even when stats are handed in", function()
         local stats = { today_pages = 42, today_duration = 49 * 60, streak = 34 }
         local frame = Heatmap.build({ width = 1000, height = 200 },
-            { range = "year", typical_week = true, week_start = 2, now = NOW, stat_fields = { "today_pages", "today_duration", "streak" } },
+            { range = "year", typical_week = true, week_start = 2, now = NOW, stat_left = "today_duration", stat_right = "streak" },
             activity(371, function() return 10 end), stats)
         local bb = H.bb(); frame[1].paintTo(frame[1], bb, 0, 0)
         local seen, dividers, letters = {}, 0, 0
@@ -238,9 +235,9 @@ describe("heatmap paint", function()
             if c[1] == "text" then seen[c[4]] = true; if #c[4] == 1 then letters = letters + 1 end end
             if c[1] == "rect" and c[6] == "dark_gray" and c[4] == 2 then dividers = dividers + 1 end
         end
-        assert.is_true(seen["42"] and seen["pages today"] and seen["49m"] and seen["read today"] and seen["34"] and seen["day streak"])
+        assert.is_nil(seen["49m"]); assert.is_nil(seen["read today"]); assert.is_nil(seen["34"]); assert.is_nil(seen["day streak"])
         assert.is_true(seen["Jan"] and seen["Sep"])
-        assert.equals(2, dividers)
+        assert.equals(0, dividers)
         assert.equals(7, letters)
     end)
     it("keeps the month labels in a short year row by shrinking their face", function()
@@ -250,11 +247,6 @@ describe("heatmap paint", function()
         assert.is_true(short.month_face.size < tall.month_face.size)
         assert.is_true(short.content_h <= 60)
         assert.is_false(Heatmap.layout(1000, 60, { range = "year", month_labels = false }, Heatmap.spanFor("year", NOW, 2)).labels)
-    end)
-    it("lets the year graph stand alone when its stats row cannot fit", function()
-        local span = Heatmap.spanFor("year", NOW, 2)
-        local m = Heatmap.fitLayout(1000, 40, { range = "year", typical_week = true }, span, { row = { { value = "42", label = "pages today" } } })
-        assert.is_false(m.stats)
     end)
     it("formats durations and renders every field", function()
         assert.equals("0m", Heatmap.fmtTime(0))

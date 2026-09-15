@@ -36,20 +36,19 @@ put it on a Launcher or Controls button.
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| ZenOS stats above the year graph | on, off | on |
 | Stats beside the graph | Two of: pages today, time today, day streak, pages this week, time this week, days read, or none. 3 months and Month only. | Time today, Day streak |
-| Height | Automatic, Extra small, Small, Medium, Large (1 to 4 Home rows) | Automatic: 2 rows, or 1 for the year graph without the stats |
+| Height | Automatic, Extra small, Small, Medium, Large (1 to 4 Home rows) | Automatic: 1 row for the year, 2 otherwise |
 
 Darker cells mean more reading: relative shading compares each day with your
 own recent average, fixed shading uses 15 and 60 minutes. Today has a thick border around it.
 The typical week shows each weekday's average over the last 12 weeks as a bar,
 filled towards your best weekday and shaded like the cells. The week starts on
 the day set in KOReader's statistics plugin. Month labels stay whenever they
-are on, shrinking with the cells in a short row. The stats are ZenOS's own
-numbers: over the year graph the widget shows the same three as ZenOS's
-Reading stats widget, so it can stand in for that row. They follow that
-widget's font size setting too (its fixed size, or its maximum when it sizes
-itself), and shrink further only when the graph needs the room.
+are on, shrinking with the cells in a short row. The year graph keeps its row
+to itself, and ZenOS's Reading stats widget stays ZenOS's. The stats beside
+the 3-month and Month graphs are ZenOS's own numbers and follow that widget's
+font size setting (its fixed size, or its maximum when it sizes itself),
+shrinking further only when the graph needs the room.
 
 ## Compatibility
 

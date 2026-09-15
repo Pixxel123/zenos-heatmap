@@ -61,9 +61,8 @@ as a plugin menu for Launcher and Controls buttons):
 | Typical week | on, off | on |
 | Month labels under the graph | on, off | on |
 | Shading | Relative to my average, Fixed thresholds | Relative |
-| ZenOS stats above the year graph | on, off | on |
 | Stats beside the graph | left and right slot: Pages today, Time today, Day streak, Pages this week, Time this week, Days read, None (3 months and Month) | Time today, Day streak |
-| Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (2; 1 for the year without its stats) |
+| Height | Automatic, Extra small (1 unit), Small (2), Medium (3), Large (4) | Automatic (1 for year, 2 otherwise) |
 
 Changing a setting saves and re-registers the item, which makes ZenOS rebuild
 Home. Enabling and positioning the widget is done in ZenOS under
@@ -106,21 +105,13 @@ with the same clearance rule as ZenOS's stats row, the type stepping down from
 `queryHomeStats` (guarded; without it the graph stands alone), so they equal
 the Reading stats widget's. The row letters take a face sized from the row
 pitch (a capital is about three quarters of the font's pixel size), capped at
-the month labels' size, so all seven always show.
-
-The year graph is width-bound, so its stats do not sit beside it. Instead
-the three fields ZenOS shows in its Reading stats widget (read from the Home
-layout's `middle_stats_triplet`, defaults pages today, time today, day
-streak) form a row above the graph: equal cells, value over caption, centred,
-dividers between, the type stepping down to 8 until the graph under it is
-complete. The starting size is ZenOS's own Reading stats setting
-(`modules.stats_triplet`: `font_size` when `automatic_font_size` is false,
-else `max_font_size`; 16 and 18 by default), for every range, so lowering
-that setting scales the stats here as well. One Home row cannot hold both, so automatic height asks
-for two rows when this is on (the "ZenOS stats above the year graph" toggle,
-default on) and one when it is off. If the row never fits, the graph stands
-alone. Asked for so the widget can replace the Reading stats row and the
-year graph keeps a row to itself.
+the month labels' size, so all seven always show. The starting type size is
+ZenOS's own Reading stats setting (`modules.stats_triplet`: `font_size` when
+`automatic_font_size` is false, else `max_font_size`; 16 and 18 by default),
+so lowering that setting scales the stats here as well. The year row is the
+graph alone; the stats live in ZenOS's own widget (decoupled on 15 September
+at the user's request, after a short-lived row of ZenOS's three stats over
+the year graph).
 
 ## Not counting against Home's budget (added 15 September)
 
